@@ -274,3 +274,7 @@
 2026-04-29 02:49:11,793 | INFO | SHADOW_TRAINER >> Optimal Brain found. Weights Updated: {'trend': 472.25972856304634, 'rsi': 1.0}
 2026-04-29 02:49:13,485 | INFO | SHADOW_TRAINER >> Running Parallel Simulations on recent window...
 2026-04-29 02:49:13,485 | INFO | SHADOW_TRAINER >> Optimal Brain found. Weights Updated: {'trend': 831.966357565446, 'rsi': 1.0}
+2026-04-29 02:49:16,827 | ERROR | ENGINE_CRASH >> binance {"code":-2008,"msg":"Invalid Api-Key ID."}
+2026-04-29 02:49:17,022 | ERROR | ENGINE_CRASH >> binance {"code":-2008,"msg":"Invalid Api-Key ID."}
+2026-04-29 02:49:27,059 | ERROR | ENGINE_CRASH >> binance {"code":-2008,"msg":"Invalid Api-Key ID."}
+2026-04-29 02:49:27,253 | ERROR | ENGINE_CRASH >> binance {"code":-2008,"msg":"Invalid Api-Key ID."}
