@@ -4,10 +4,10 @@ type Tick = { t: number; p: number };
 type Ticker = { symbol: string; label: string; base: number; vol: number; price: number; series: Tick[] };
 
 const TICKERS: Omit<Ticker, "price" | "series">[] = [
-  { symbol: "BTC/USDT", label: "BINANCE", base: 64210, vol: 180 },
-  { symbol: "ETH/USDT", label: "BINANCE", base: 3142, vol: 12 },
-  { symbol: "SOL/USDT", label: "CRYPTO_COM", base: 168.4, vol: 1.2 },
-  { symbol: "DOGE/USDT", label: "CRYPTO_COM", base: 0.142, vol: 0.004 },
+  { symbol: "BTCUSDT", label: "BINANCE", base: 64210, vol: 180 },
+  { symbol: "ETHUSDT", label: "BINANCE", base: 3142, vol: 12 },
+  { symbol: "SOLUSDT", label: "CRYPTO_COM", base: 168.4, vol: 1.2 },
+  { symbol: "DOGEUSDT", label: "CRYPTO_COM", base: 0.142, vol: 0.004 },
   { symbol: "AAPL", label: "NASDAQ", base: 224.6, vol: 0.6 },
   { symbol: "TSLA", label: "NASDAQ", base: 261.3, vol: 1.4 },
   { symbol: "NVDA", label: "NASDAQ", base: 138.5, vol: 0.9 },
@@ -40,14 +40,14 @@ const ApexTerminal = () => {
   const [killed, setKilled] = useState(false);
   const chartRef = useRef<HTMLCanvasElement | null>(null);
   const obiRef = useRef<HTMLCanvasElement | null>(null);
-  const focusSymbol = "BTC/USDT";
+  const focusSymbol = "BTCUSDT";
 
   // API Integration
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Detect if we are running on Vite dev server (5173) and point to gateway (8000)
-        const baseUrl = window.location.port === "5173" ? "http://localhost:8000" : "";
+        // Detect if we are running on Vite dev server (e.g. 5173, 8080) and point to gateway (8000)
+        const baseUrl = ["5173", "8080", "3000"].includes(window.location.port) ? "http://localhost:8000" : "";
         const res = await fetch(`${baseUrl}/api/status`);
         if (!res.ok) return;
         const data = await res.json();
@@ -58,16 +58,10 @@ const ApexTerminal = () => {
         setStability(data.drift_detected ? 0.6 : 0.98);
         
         // Update focus ticker with real price
+        // Update all tickers with real prices from backend if available
         setTickers((prev) =>
           prev.map((tk) => {
-            if (tk.symbol === "BTC/USDT") {
-              const next = data.last_price || tk.price;
-              const series = [...tk.series, { t: Date.now(), p: next }].slice(-180);
-              return { ...tk, price: next, series };
-            }
-            // Still simulate others for visual fluff
-            const drift = (Math.random() - 0.5) * tk.vol * 0.4;
-            const next = Math.max(0.0001, tk.price + drift);
+            const next = data.prices?.[tk.symbol] || (tk.symbol === focusSymbol ? data.last_price : 0) || tk.price;
             const series = [...tk.series, { t: Date.now(), p: next }].slice(-180);
             return { ...tk, price: next, series };
           })
