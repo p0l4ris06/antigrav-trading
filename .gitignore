@@ -38,6 +38,7 @@ models/
 # --- Logs ---
 *.log
 logs/
+trading_log.txt
 
 # --- Rust ---
 rust_inference/target/
