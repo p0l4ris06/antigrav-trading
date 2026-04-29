@@ -1,0 +1,43 @@
+# Version control
+.git
+.gitignore
+
+# IDE
+.vscode
+.cursor
+.idea
+
+# Python
+__pycache__
+*.py[cod]
+*.egg-info
+.venv
+venv
+
+# Node (dashboard has its own install step)
+dashboard/node_modules
+dashboard/dist
+
+# Environment secrets (injected via docker-compose)
+.env
+.env.*
+
+# Model artifacts (mount as volume if needed)
+models/
+data/
+db/
+
+# Rust engines (native builds don't transfer across containers)
+rust_engine/
+rust_inference/
+
+# Logs
+*.log
+trading_log.txt
+
+# Legacy
+legacy_v1/
+core/
+
+# Archives
+*.zip

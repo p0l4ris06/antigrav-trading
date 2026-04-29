@@ -190,6 +190,16 @@ class TickConsumer:
 
         tracer = get_tracer("antigravity.consumer")
 
+        # --- Step 6: Update global price tracker for ALL symbols in the batch ---
+        for tick in batch:
+            symbol = tick.get("symbol")
+            price = tick.get("last_price")
+            if symbol and price is not None:
+                p_val = float(price)
+                self._app_state.prices[symbol] = p_val
+                # Update absolute last price (for focus symbol)
+                self._app_state.last_price = p_val
+
         # --- Step 1: Ingest into Feature Factory ---
         if self._features is not None:
             with tracer.start_as_current_span("feature_ingest") as fi_span:
@@ -265,7 +275,4 @@ class TickConsumer:
 
                 if last_price > 0:
                     self._last_price = last_price
-                    # Update global price tracker
-                    symbol = last_tick.get("symbol", "UNKNOWN")
-                    self._app_state.prices[symbol] = last_price
 

@@ -38,12 +38,24 @@ logger = structlog.get_logger(__name__)
 
 
 async def _auto_simulate(queue: asyncio.Queue[dict[str, Any]]) -> None:
-    """Background task to generate synthetic ticks for all configured symbols."""
+    """Background task to generate synthetic ticks for all dashboard symbols."""
     import random
-    
-    symbols = settings.exchange.symbols
-    prices = {s: 50000.0 if "BTC" in s else 3000.0 if "ETH" in s else 100.0 for s in symbols}
-    
+
+    # Full ticker universe — matches the frontend ApexTerminal hardcoded list
+    _UNIVERSE = {
+        "BTCUSDT":   64210.0,
+        "ETHUSDT":   3142.0,
+        "SOLUSDT":   168.4,
+        "DOGEUSDT":  0.142,
+        "AAPL":      224.6,
+        "TSLA":      261.3,
+        "NVDA":      138.5,
+        "MSFT":      432.1,
+    }
+    # Merge configured symbols (they may overlap; configured ones take universe defaults)
+    symbols = list({*settings.exchange.symbols, *_UNIVERSE.keys()})
+    prices = {s: _UNIVERSE.get(s, 100.0) for s in symbols}
+
     logger.info("sim.auto_start", symbols=symbols)
     
     while True:
@@ -57,8 +69,11 @@ async def _auto_simulate(queue: asyncio.Queue[dict[str, Any]]) -> None:
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "bid_price": round(prices[symbol] - spread/2, 4),
                 "ask_price": round(prices[symbol] + spread/2, 4),
+                "bid_size": round(random.expovariate(1.0), 4),
+                "ask_size": round(random.expovariate(1.0), 4),
                 "last_price": round(prices[symbol], 4),
                 "last_size": round(random.expovariate(1.0), 4),
+                "trade_id": 0,
             }
             
             try:

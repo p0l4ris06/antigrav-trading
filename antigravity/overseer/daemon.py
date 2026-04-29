@@ -199,6 +199,7 @@ class AgenticOverseer:
             HOT_SWAP        → swap weights, reset detectors
         """
         logger.info("overseer.started", poll_interval=poll_interval)
+        self._log_event("system_monitoring_started", status="OPTIMAL", poll_interval=poll_interval)
 
         while True:
             try:
@@ -247,8 +248,13 @@ class AgenticOverseer:
                     (self._app_state and getattr(self._app_state, "overseer_state", "") == "FORCE_RETRAIN_REQUESTED")
                     or (settings.overseer.proactive_shadow and self._state == OverseerState.MONITORING)
                 ):
-                    self._log_event("shadow_fork_triggered", reason="proactive" if settings.overseer.proactive_shadow else "manual")
+                    is_manual = (self._app_state and getattr(self._app_state, "overseer_state", "") == "FORCE_RETRAIN_REQUESTED")
+                    self._log_event("shadow_fork_triggered", reason="manual" if is_manual else "proactive")
                     self._state = OverseerState.DRIFT_DETECTED
+                    
+                    # Clear manual request to prevent infinite loop
+                    if is_manual and self._app_state:
+                        self._app_state.overseer_state = self._state.name
 
                 await asyncio.sleep(poll_interval)
 
@@ -393,8 +399,8 @@ class AgenticOverseer:
             t_statistic=round(float(t_stat), 4),
             new_mean=round(float(np.mean(new_returns)), 6),
             old_mean=round(float(np.mean(old_returns)), 6),
-            significant=significant,
-            new_better=new_better,
+            significant=bool(significant),
+            new_better=bool(new_better),
         )
 
         if significant and new_better:
