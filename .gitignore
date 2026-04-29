@@ -1,0 +1,43 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+venv/
+node_modules/
+
+# --- Environment ---
+.env*
+
+# --- IDE ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- OS ---
+Thumbs.db
+.DS_Store
+
+# --- ClickHouse local data ---
+clickhouse_data/
+data/
+db/
+
+# --- Model artifacts ---
+models/
+*.onnx
+*.zip
+*.pt
+*.pth
+
+# --- Logs ---
+*.log
+logs/
+
+# --- Rust ---
+rust_inference/target/

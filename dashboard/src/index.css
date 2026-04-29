@@ -1,0 +1,199 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    /* Brutalist Apex — bone, steel, acid signal */
+    --background: 0 0% 6%;
+    --foreground: 40 18% 92%;
+
+    --card: 0 0% 9%;
+    --card-foreground: 40 18% 92%;
+
+    --popover: 0 0% 9%;
+    --popover-foreground: 40 18% 92%;
+
+    --primary: 70 95% 55%;
+    --primary-foreground: 0 0% 6%;
+
+    --secondary: 220 6% 18%;
+    --secondary-foreground: 40 18% 92%;
+
+    --muted: 0 0% 12%;
+    --muted-foreground: 30 6% 55%;
+
+    --accent: 70 95% 55%;
+    --accent-foreground: 0 0% 6%;
+
+    --destructive: 14 95% 58%;
+    --destructive-foreground: 0 0% 6%;
+
+    --border: 40 8% 22%;
+    --input: 0 0% 12%;
+    --ring: 70 95% 55%;
+
+    --radius: 0rem;
+
+    --apex-cyan: 70 95% 55%;        /* acid signal (replaces cyan) */
+    --apex-purple: 30 6% 55%;       /* concrete steel (replaces purple) */
+    --apex-glass: 0 0% 8% / 0.92;
+    --apex-bullish: 70 95% 55%;
+    --apex-bearish: 14 95% 58%;
+    --apex-bone: 40 18% 92%;
+
+    --gradient-radial: linear-gradient(180deg, hsl(0 0% 7%) 0%, hsl(0 0% 5%) 100%);
+    --gradient-logo: linear-gradient(90deg, hsl(var(--apex-bone)), hsl(var(--apex-bone)));
+    --shadow-panel: 0 0 0 1px hsl(40 8% 22%);
+    --shadow-cyan: 0 0 0 1px hsl(var(--apex-cyan));
+    --shadow-purple: 0 0 0 1px hsl(var(--apex-purple));
+
+    --sidebar-background: 0 0% 98%;
+
+    --sidebar-foreground: 240 5.3% 26.1%;
+
+    --sidebar-primary: 240 5.9% 10%;
+
+    --sidebar-primary-foreground: 0 0% 98%;
+
+    --sidebar-accent: 240 4.8% 95.9%;
+
+    --sidebar-accent-foreground: 240 5.9% 10%;
+
+    --sidebar-border: 220 13% 91%;
+
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Space Grotesk', sans-serif;
+    background-image: var(--gradient-radial);
+    min-height: 100vh;
+  }
+}
+
+@layer components {
+  .apex-panel {
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: 0;
+    transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1),
+                border-color 0.6s cubic-bezier(0.22, 1, 0.36, 1),
+                background-color 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .apex-hover {
+    transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1),
+                color 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+                background-color 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+                border-color 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+                opacity 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .apex-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .apex-label {
+    font-size: 0.65rem;
+    color: hsl(var(--muted-foreground));
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+  }
+
+  .apex-badge {
+    @apply apex-mono;
+    font-size: 0.7rem;
+    padding: 6px 12px;
+    border-radius: 0;
+    border: 1px solid hsl(var(--apex-cyan));
+    color: hsl(var(--apex-cyan));
+    background: transparent;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+  }
+
+  .apex-badge-purple {
+    border-color: hsl(var(--apex-bone));
+    color: hsl(var(--apex-bone));
+    background: transparent;
+  }
+
+  .apex-logo {
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    text-transform: uppercase;
+  }
+
+  .apex-logo-accent {
+    color: hsl(var(--apex-purple));
+    font-weight: 300;
+  }
+}
+
+@keyframes apex-pulse {
+  0%, 100% { opacity: 1;   transform: scale(1); }
+  50%      { opacity: 0.5; transform: scale(1.25); }
+}
+
+.apex-pulse-dot {
+  animation: apex-pulse 2.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+/* Honor user motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
