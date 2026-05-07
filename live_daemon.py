@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import gc
 import json
 import logging
 import math
@@ -136,6 +137,8 @@ class DaemonState:
         consecutive_losses : int
         equity_hwm    : float   (high-water mark for drawdown guard)
         halted        : bool    (circuit breaker or drawdown trip)
+        simulated_equity: float (simulated balance for dry-runs)
+        entry_price   : float   (entry price of the current position)
     """
 
     def __init__(self, path: str):
@@ -151,6 +154,8 @@ class DaemonState:
             "consecutive_losses": 0,
             "equity_hwm": 0.0,
             "halted": False,
+            "simulated_equity": 1000.0,
+            "entry_price": 0.0,
         }
 
     def save(self):
@@ -193,6 +198,24 @@ class DaemonState:
         self._data["halted"] = v
         self.save()
 
+    @property
+    def simulated_equity(self) -> float:
+        return self._data.get("simulated_equity", 1000.0)
+
+    @simulated_equity.setter
+    def simulated_equity(self, v: float):
+        self._data["simulated_equity"] = v
+        self.save()
+
+    @property
+    def entry_price(self) -> float:
+        return self._data.get("entry_price", 0.0)
+
+    @entry_price.setter
+    def entry_price(self, v: float):
+        self._data["entry_price"] = v
+        self.save()
+
 
 # ─────────────────────────────────────────────
 #  Exchange helpers
@@ -225,9 +248,16 @@ async def fetch_ohlcv_with_retry(
     log: logging.Logger,
     max_retries: int = 5,
 ) -> pl.DataFrame:
+    actual_symbol = symbol
+    convert_to_gbp = False
+    if exchange.id == "cryptocom" and symbol == "BTC/GBP":
+        actual_symbol = "BTC/USDT"
+        convert_to_gbp = True
+        log.info("[SIMULATION] Crypto.com lacks native BTC/GBP. Fetching BTC/USDT and dynamically converting to GBP...")
+
     for attempt in range(max_retries):
         try:
-            ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+            ohlcv = exchange.fetch_ohlcv(actual_symbol, timeframe, limit=limit)
             df = pl.DataFrame(
                 ohlcv,
                 schema=["timestamp", "open", "high", "low", "close", "volume"],
@@ -243,12 +273,32 @@ async def fetch_ohlcv_with_retry(
                 pl.col("close").cast(pl.Float32),
                 pl.col("volume").cast(pl.Float32),
             ])
+
+            if convert_to_gbp:
+                rate = 0.80
+                try:
+                    # Fetch live USDT/GBP conversion rate from Kraken
+                    import ccxt as ccxt_lib
+                    k = ccxt_lib.kraken()
+                    ticker = k.fetch_ticker("USDT/GBP")
+                    rate = float(ticker.get("last", ticker.get("close", 0.80)))
+                    log.info("[SIMULATION] Fetched live USDT/GBP rate from Kraken: %.4f", rate)
+                except Exception:
+                    log.warning("[SIMULATION] Could not fetch live conversion rate. Using fallback rate: 0.80 GBP/USDT")
+
+                df = df.with_columns([
+                    pl.col("open") * rate,
+                    pl.col("high") * rate,
+                    pl.col("low") * rate,
+                    pl.col("close") * rate,
+                ])
+
             # Drop the most recent (still-forming) candle
             return df.head(-1)
 
         except Exception as exc:
             wait = 2.0 ** attempt
-            log.warning("OHLCV fetch attempt %d/%d failed: %s — retrying in %.0fs",
+            log.warning("OHLCV fetch attempt %d/%d failed: %s - retrying in %.0fs",
                         attempt + 1, max_retries, exc, wait)
             await asyncio.sleep(wait)
 
@@ -375,31 +425,32 @@ async def inference_cycle(
     exchange: ccxt.Exchange,
     model: PPO,
     gateway: OmniGateway,
+    factory: SMCFeatureFactory,
+    vec_norm: Optional[Any],
     cfg: DaemonConfig,
     state: DaemonState,
     log: logging.Logger,
     validated: dict,   # mutable dict used as a flag across calls
 ) -> None:
     ts = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
-    log.info("── Inference cycle  %s ──", ts)
+    log.info("-- Inference cycle  %s --", ts)
 
     # 1. Fetch live OHLCV
     raw_df = await fetch_ohlcv_with_retry(
         exchange, cfg.symbol, cfg.timeframe, cfg.candle_lookback, log
     )
     if raw_df.is_empty():
-        log.warning("No market data — skipping cycle.")
+        log.warning("No market data - skipping cycle.")
         return
 
     current_price = float(raw_df["close"][-1])
     log.info("Price: %.4f | Candles: %d", current_price, raw_df.height)
 
     # 2. SMC feature engineering
-    factory = SMCFeatureFactory(swing_length=cfg.swing_length)
     feature_df = factory.compute_features(raw_df)
 
     if feature_df.is_empty() or feature_df.height < 2:
-        log.warning("Insufficient feature data — skipping cycle.")
+        log.warning("Insufficient feature data - skipping cycle.")
         return
 
     # Extract numeric columns exactly like train.py
@@ -417,7 +468,21 @@ async def inference_cycle(
 
     # Build 15-dimensional observation state with padding/truncation
     raw_state = feature_df.select(numeric_cols).tail(1).to_numpy()[0].astype(np.float32)
-    target_dim = 15
+
+    # If a normalizer is available, normalize the real features before padding
+    if vec_norm is not None:
+        try:
+            norm_dim = vec_norm.obs_rms.mean.shape[0]
+            if len(raw_state) >= norm_dim:
+                norm_state = vec_norm.normalize_obs(raw_state[:norm_dim])
+                raw_state = np.concatenate([norm_state, raw_state[norm_dim:]])
+            else:
+                padded_raw = np.pad(raw_state, (0, norm_dim - len(raw_state)), mode='constant')
+                raw_state = vec_norm.normalize_obs(padded_raw)
+        except Exception as exc:
+            log.warning("Normalization failed: %s. Falling back to raw state.", exc)
+
+    target_dim = model.observation_space.shape[0]
     if len(raw_state) < target_dim:
         current_state = np.pad(raw_state, (0, target_dim - len(raw_state)), mode='constant')
     elif len(raw_state) > target_dim:
@@ -430,7 +495,7 @@ async def inference_cycle(
 
     # Check for NaN/Inf in state vector
     if not np.isfinite(current_state).all():
-        log.warning("State vector contains NaN/Inf — skipping cycle. Check feature engineering.")
+        log.warning("State vector contains NaN/Inf - skipping cycle. Check feature engineering.")
         return
 
     norm_atr = float(feature_df["norm_atr"][-1]) if "norm_atr" in feature_df.columns else 0.01
@@ -439,7 +504,11 @@ async def inference_cycle(
     # 4. PPO inference
     action, _ = model.predict(current_state, deterministic=True)
     bias_raw: float = float(action[0])
-    kelly_confidence: float = float(action[1])
+    if len(action) > 1:
+        kelly_confidence: float = float(action[1])
+    else:
+        # For 1D action spaces (like ppo_model.zip), the absolute value represents the size/allocation fraction
+        kelly_confidence: float = abs(bias_raw)
 
     # Regime detection from BOS flags
     bull_bos = float(current_state[-4]) if len(current_state) >= 4 else 0.0
@@ -447,26 +516,33 @@ async def inference_cycle(
     regime = "TREND" if (bull_bos > 0.5 or bear_bos > 0.5) else "MEAN_REVERSION"
 
     log.info(
-        "Agent → bias=%.4f  kelly=%.2f%%  regime=%s  ATR=%.4f",
+        "Agent -> bias=%.4f  kelly=%.2f%%  regime=%s  ATR=%.4f",
         bias_raw, kelly_confidence * 100, regime, current_atr,
     )
 
     # 5. Risk gates
     if kelly_confidence < cfg.min_kelly_threshold:
-        log.info("Kelly confidence %.2f%% below threshold %.2f%% — no trade.",
+        log.info("Kelly confidence %.2f%% below threshold %.2f%% - no trade.",
                  kelly_confidence * 100, cfg.min_kelly_threshold * 100)
         return
 
     # Detect desired direction
     desired_side = "long" if bias_raw > 0 else "short"
     if state.position == desired_side:
-        log.info("Already in %s position — no action.", desired_side)
+        log.info("Already in %s position - no action.", desired_side)
         return
 
     # 6. Equity and risk checks
     currency = cfg.symbol.split("/")[1]   # e.g. USDT
-    equity = await fetch_equity(exchange, currency, cfg.account_equity, log)
-    log.info("Account equity: %.2f %s", equity, currency)
+    if cfg.dry_run:
+        # Use and update simulated equity
+        if cfg.account_equity is not None and state.simulated_equity == 1000.0:
+            state.simulated_equity = cfg.account_equity
+        equity = state.simulated_equity
+        log.info("Simulated account equity: %.2f %s", equity, currency)
+    else:
+        equity = await fetch_equity(exchange, currency, cfg.account_equity, log)
+        log.info("Account equity: %.2f %s", equity, currency)
 
     if not check_drawdown(equity, state, cfg, log):
         return
@@ -475,9 +551,46 @@ async def inference_cycle(
 
     # 7. Execute (or simulate)
     if cfg.dry_run:
-        log.info("[DRY-RUN] Would route action: side=%s  equity=%.2f  ATR=%.4f",
-                 desired_side, equity, current_atr)
+        # If we have an existing open position, we simulate closing it before opening the new one.
+        if state.position is not None and desired_side != state.position:
+            prev_side = state.position
+            entry_p = state.entry_price
+            if entry_p > 0:
+                # Lot size based on RiskManager formula
+                safe_frac = min(kelly_confidence, 0.05)
+                cap_at_risk = equity * safe_frac
+                stop_dist = current_atr * 2.0
+                if stop_dist > 0:
+                    lot_size = cap_at_risk / stop_dist
+                    max_size = (equity * 0.1) / entry_p
+                    lot_size = min(lot_size, max_size)
+                    
+                    price_diff = current_price - entry_p
+                    if prev_side == "short":
+                        price_diff = -price_diff
+                    
+                    realized_pnl = lot_size * price_diff
+                    fee = lot_size * current_price * 0.001
+                    realized_pnl -= fee
+                    
+                    old_equity = equity
+                    equity += realized_pnl
+                    state.simulated_equity = equity
+                    
+                    if realized_pnl < 0:
+                        state.consecutive_losses += 1
+                    else:
+                        state.consecutive_losses = 0
+                        
+                    log.info(
+                        "[DRY-RUN SIM] Closed %s trade. Entry: %.2f, Exit: %.2f. PNL: %+.2f (fee: %.2f). New Equity: %.2f %s",
+                        prev_side.upper(), entry_p, current_price, realized_pnl, fee, equity, currency
+                    )
+        
+        log.info("[DRY-RUN] Opening %s position at %.2f. Sim Balance: %.2f %s",
+                 desired_side.upper(), current_price, equity, currency)
         state.position = desired_side
+        state.entry_price = current_price
         return
 
     try:
@@ -496,6 +609,9 @@ async def inference_cycle(
         state.consecutive_losses += 1
         log.warning("Consecutive losses now: %d / %d",
                     state.consecutive_losses, cfg.circuit_breaker_losses)
+
+    # Explicitly run garbage collection to prune memory footprint and keep RAM low
+    gc.collect()
 
 
 # ─────────────────────────────────────────────
@@ -520,6 +636,8 @@ def parse_args(cfg: DaemonConfig) -> DaemonConfig:
                    dest="circuit_breaker_losses")
     p.add_argument("--min-kelly", type=float, default=cfg.min_kelly_threshold,
                    dest="min_kelly_threshold")
+    p.add_argument("--poll-interval", type=int, default=None,
+                   help="Override poll interval in seconds to speed up testing (e.g. 10)")
     args = p.parse_args()
 
     cfg.symbol = args.symbol
@@ -531,6 +649,20 @@ def parse_args(cfg: DaemonConfig) -> DaemonConfig:
     cfg.max_drawdown_pct = args.max_drawdown_pct
     cfg.circuit_breaker_losses = args.circuit_breaker_losses
     cfg.min_kelly_threshold = args.min_kelly_threshold
+
+    # Map timeframe to poll_interval_seconds
+    tf = cfg.timeframe.lower()
+    if tf.endswith("s"):
+        cfg.poll_interval_seconds = int(tf[:-1])
+    elif tf.endswith("m"):
+        cfg.poll_interval_seconds = int(tf[:-1]) * 60
+    elif tf.endswith("h"):
+        cfg.poll_interval_seconds = int(tf[:-1]) * 3600
+    elif tf.endswith("d"):
+        cfg.poll_interval_seconds = int(tf[:-1]) * 86400
+
+    if args.poll_interval is not None:
+        cfg.poll_interval_seconds = args.poll_interval
     return cfg
 
 
@@ -546,7 +678,7 @@ async def main():
     log = setup_logging(cfg.log_dir)
     state = DaemonState(cfg.state_file)
 
-    log.info("═══ ANTIGRAVITY OMNI-NODE DAEMON START ═══")
+    log.info("=== ANTIGRAVITY OMNI-NODE DAEMON START ===")
     log.info("Symbol: %s | Timeframe: %s | Exchange: %s | Dry-run: %s",
              cfg.symbol, cfg.timeframe, cfg.exchange_name, cfg.dry_run)
 
@@ -589,6 +721,21 @@ async def main():
     model = PPO.load(cfg.model_path)
     log.info("Model loaded. Observation space: %s", model.observation_space.shape)
 
+    # Load VecNormalize stats
+    vec_norm = None
+    vec_normalize_path = Path(cfg.model_path).parent / "vec_normalize.pkl"
+    if vec_normalize_path.exists():
+        log.info("Loading VecNormalize stats from %s ...", vec_normalize_path)
+        try:
+            import pickle
+            with open(vec_normalize_path, "rb") as f:
+                vec_norm = pickle.load(f)
+            log.info("VecNormalize loaded successfully. Mean shape: %s", vec_norm.obs_rms.mean.shape)
+        except Exception as exc:
+            log.warning("Could not load VecNormalize: %s. Using raw observations.", exc)
+    else:
+        log.warning("VecNormalize file not found at %s. Using raw observations.", vec_normalize_path)
+
     # Build exchange connection
     exchange = build_exchange(cfg)
     log.info("Exchange connected: %s", cfg.exchange_name)
@@ -604,12 +751,15 @@ async def main():
             "Reset %s manually to resume trading.", cfg.state_file
         )
 
+    # Pre-instantiate the SMCFeatureFactory to avoid redundant memory allocations each cycle
+    factory = SMCFeatureFactory(swing_length=cfg.swing_length)
+
     validated: dict = {}
 
     try:
         # Run first cycle immediately to verify system is working (especially helpful on restart or dryrun)
         if not state.halted and not shutdown.is_set():
-            await inference_cycle(exchange, model, gateway, cfg, state, log, validated)
+            await inference_cycle(exchange, model, gateway, factory, vec_norm, cfg, state, log, validated)
 
         # Main loop — candle-aligned
         while not shutdown.is_set():
@@ -626,21 +776,40 @@ async def main():
                 continue
 
             wait = seconds_to_next_candle(cfg.poll_interval_seconds)
-            log.info("Next candle in %dm %ds — standing by.",
+            log.info("Next candle in %dm %ds - standing by.",
                      int(wait // 60), int(wait % 60))
 
-            try:
-                await asyncio.wait_for(shutdown.wait(), timeout=wait)
-                break   # shutdown was set during the wait
-            except asyncio.TimeoutError:
-                pass    # normal path — candle boundary reached
+            # Real-time balance and position heartbeat while waiting
+            end_time = time.time() + wait
+            last_heartbeat = 0.0
+            while time.time() < end_time and not shutdown.is_set():
+                now = time.time()
+                time_left = end_time - now
+                if now - last_heartbeat >= 10.0 or last_heartbeat == 0.0:
+                    pos_str = f"POSITION: {state.position.upper()} (Entry: {state.entry_price:.2f})" if state.position else "POSITION: NONE"
+                    balance_prefix = "Simulated Balance: GBP" if cfg.dry_run else "Balance:"
+                    log.info(
+                        "[REAL-TIME STATUS] %s %.2f | %s | Next candle in %dm %ds",
+                        balance_prefix, state.simulated_equity if cfg.dry_run else (cfg.account_equity or 0.0),
+                        pos_str, int(time_left // 60), int(time_left % 60)
+                    )
+                    last_heartbeat = now
+                
+                try:
+                    await asyncio.wait_for(shutdown.wait(), timeout=min(5.0, time_left))
+                    break
+                except asyncio.TimeoutError:
+                    pass
 
-            await inference_cycle(exchange, model, gateway, cfg, state, log, validated)
+            if shutdown.is_set():
+                break
+
+            await inference_cycle(exchange, model, gateway, factory, vec_norm, cfg, state, log, validated)
     except KeyboardInterrupt:
         log.warning("KeyboardInterrupt received — initiating clean shutdown.")
         shutdown.set()
 
-    log.info("═══ DAEMON SHUTDOWN COMPLETE ═══")
+    log.info("=== DAEMON SHUTDOWN COMPLETE ===")
     log.info("Final state: position=%s  losses=%d  HWM=%.2f",
              state.position, state.consecutive_losses, state.equity_hwm)
 
