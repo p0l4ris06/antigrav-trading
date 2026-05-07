@@ -48,7 +48,7 @@ from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 
 import ccxt
 import numpy as np
