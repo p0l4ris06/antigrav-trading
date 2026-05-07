@@ -21,32 +21,39 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends gcc g++ && \
     rm -rf /var/lib/apt/lists/*
 
+# Node.js for crypto-com-app skill scripts
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends nodejs npm && \
+    rm -rf /var/lib/apt/lists/* && \
+    npm install -g tsx
+
 WORKDIR /app
 
 # Install Python dependencies
 COPY pyproject.toml ./
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel hatchling && \
     pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
-    (pip install --no-cache-dir . 2>/dev/null || \
     pip install --no-cache-dir \
-        "fastapi>=0.115" \
-        "uvicorn[standard]>=0.30" \
-        "websockets>=13" \
-        "clickhouse-connect>=0.8" \
-        "polars>=1.0" \
-        "numpy>=1.26" \
-        "scipy>=1.14" \
-        "scikit-learn>=1.5" \
-        "gymnasium>=1.0" \
-        "stable-baselines3>=2.4" \
-        "pydantic>=2.9" \
-        "pydantic-settings>=2.5" \
-        "structlog>=24.4" \
-        "uvloop>=0.21" \
-        "opentelemetry-api>=1.27" \
-        "opentelemetry-sdk>=1.27" \
-        "opentelemetry-exporter-otlp-proto-http>=1.27" \
-        "opentelemetry-instrumentation-fastapi>=0.48b0")
+    "fastapi>=0.115" \
+    "uvicorn[standard]>=0.30" \
+    "websockets>=13" \
+    "clickhouse-connect>=0.8" \
+    "polars>=1.0" \
+    "numpy>=1.26" \
+    "scipy>=1.14" \
+    "scikit-learn>=1.5" \
+    "gymnasium>=1.0" \
+    "stable-baselines3>=2.4" \
+    "pydantic>=2.9" \
+    "pydantic-settings>=2.5" \
+    "structlog>=24.4" \
+    "uvloop>=0.21" \
+    "opentelemetry-api>=1.27" \
+    "opentelemetry-sdk>=1.27" \
+    "opentelemetry-exporter-otlp-proto-http>=1.27" \
+    "opentelemetry-instrumentation-fastapi>=0.48b0" \
+    "httpx>=0.27" \
+    "cryptography>=44.0"
 
 # Copy application code
 COPY antigravity/ ./antigravity/

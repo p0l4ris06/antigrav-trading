@@ -1,0 +1,136 @@
+{"iteration": 0, "score": 1.1036, "event": "baseline", "timestamp": "2026-05-06T07:56:49.153312+00:00"}
+{"iteration": 0, "score": 0.9984, "event": "baseline", "timestamp": "2026-05-06T07:57:47.189108+00:00"}
+{"iteration": 1, "score": null, "event": "llm_error", "error": "Error code: 404 - {'error': {'code': '404', 'message': 'Resource not found'}}", "timestamp": "2026-05-06T07:57:50.862936+00:00"}
+{"iteration": 2, "score": null, "event": "llm_error", "error": "Error code: 404 - {'error': {'code': '404', 'message': 'Resource not found'}}", "timestamp": "2026-05-06T07:57:52.079595+00:00"}
+{"iteration": 3, "score": null, "event": "llm_error", "error": "Error code: 404 - {'error': {'code': '404', 'message': 'Resource not found'}}", "timestamp": "2026-05-06T07:57:53.469634+00:00"}
+{"iteration": 4, "score": null, "event": "llm_error", "error": "Error code: 404 - {'error': {'code': '404', 'message': 'Resource not found'}}", "timestamp": "2026-05-06T07:57:54.631551+00:00"}
+{"iteration": 5, "score": null, "event": "llm_error", "error": "Error code: 404 - {'error': {'code': '404', 'message': 'Resource not found'}}", "timestamp": "2026-05-06T07:57:55.929866+00:00"}
+{"iteration": 6, "score": null, "event": "llm_error", "error": "Error code: 404 - {'error': {'code': '404', 'message': 'Resource not found'}}", "timestamp": "2026-05-06T07:57:56.907380+00:00"}
+{"iteration": 7, "score": null, "event": "llm_error", "error": "Error code: 404 - {'error': {'code': '404', 'message': 'Resource not found'}}", "timestamp": "2026-05-06T07:57:58.159464+00:00"}
+{"iteration": 8, "score": null, "event": "llm_error", "error": "Error code: 404 - {'error': {'code': '404', 'message': 'Resource not found'}}", "timestamp": "2026-05-06T07:57:59.059218+00:00"}
+{"iteration": 9, "score": null, "event": "llm_error", "error": "Error code: 404 - {'error': {'code': '404', 'message': 'Resource not found'}}", "timestamp": "2026-05-06T07:58:00.547961+00:00"}
+{"iteration": 10, "score": null, "event": "llm_error", "error": "Error code: 404 - {'error': {'code': '404', 'message': 'Resource not found'}}", "timestamp": "2026-05-06T07:58:02.403665+00:00"}
+{"iteration": 11, "score": null, "event": "llm_error", "error": "Error code: 404 - {'error': {'code': '404', 'message': 'Resource not found'}}", "timestamp": "2026-05-06T07:58:04.170195+00:00"}
+{"iteration": 12, "score": null, "event": "llm_error", "error": "Error code: 404 - {'error': {'code': '404', 'message': 'Resource not found'}}", "timestamp": "2026-05-06T07:58:05.147745+00:00"}
+{"iteration": 13, "score": null, "event": "llm_error", "error": "Error code: 404 - {'error': {'code': '404', 'message': 'Resource not found'}}", "timestamp": "2026-05-06T07:58:06.007161+00:00"}
+{"iteration": 14, "score": null, "event": "llm_error", "error": "Error code: 404 - {'error': {'code': '404', 'message': 'Resource not found'}}", "timestamp": "2026-05-06T07:58:07.356830+00:00"}
+{"iteration": 15, "score": null, "event": "llm_error", "error": "Error code: 404 - {'error': {'code': '404', 'message': 'Resource not found'}}", "timestamp": "2026-05-06T07:58:08.935967+00:00"}
+{"iteration": 1, "score": null, "event": "llm_error", "error": "Error code: 400 - {'error': {'message': \"Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.\", 'type': 'invalid_request_error', 'param': 'max_tokens', 'code': 'unsupported_parameter'}}", "timestamp": "2026-05-06T08:03:57.836730+00:00"}
+{"iteration": 2, "score": null, "event": "llm_error", "error": "Error code: 400 - {'error': {'message': \"Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.\", 'type': 'invalid_request_error', 'param': 'max_tokens', 'code': 'unsupported_parameter'}}", "timestamp": "2026-05-06T08:03:57.957480+00:00"}
+{"iteration": 3, "score": null, "event": "llm_error", "error": "Error code: 400 - {'error': {'message': \"Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.\", 'type': 'invalid_request_error', 'param': 'max_tokens', 'code': 'unsupported_parameter'}}", "timestamp": "2026-05-06T08:03:58.068663+00:00"}
+{"iteration": 4, "score": null, "event": "llm_error", "error": "Error code: 400 - {'error': {'message': \"Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.\", 'type': 'invalid_request_error', 'param': 'max_tokens', 'code': 'unsupported_parameter'}}", "timestamp": "2026-05-06T08:03:58.148413+00:00"}
+{"iteration": 5, "score": null, "event": "llm_error", "error": "Error code: 400 - {'error': {'message': \"Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.\", 'type': 'invalid_request_error', 'param': 'max_tokens', 'code': 'unsupported_parameter'}}", "timestamp": "2026-05-06T08:03:58.259803+00:00"}
+{"iteration": 6, "score": null, "event": "llm_error", "error": "Error code: 400 - {'error': {'message': \"Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.\", 'type': 'invalid_request_error', 'param': 'max_tokens', 'code': 'unsupported_parameter'}}", "timestamp": "2026-05-06T08:03:58.526083+00:00"}
+{"iteration": 7, "score": null, "event": "llm_error", "error": "Error code: 400 - {'error': {'message': \"Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.\", 'type': 'invalid_request_error', 'param': 'max_tokens', 'code': 'unsupported_parameter'}}", "timestamp": "2026-05-06T08:03:58.784977+00:00"}
+{"iteration": 8, "score": null, "event": "llm_error", "error": "Error code: 400 - {'error': {'message': \"Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.\", 'type': 'invalid_request_error', 'param': 'max_tokens', 'code': 'unsupported_parameter'}}", "timestamp": "2026-05-06T08:03:59.019291+00:00"}
+{"iteration": 9, "score": null, "event": "llm_error", "error": "Error code: 400 - {'error': {'message': \"Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.\", 'type': 'invalid_request_error', 'param': 'max_tokens', 'code': 'unsupported_parameter'}}", "timestamp": "2026-05-06T08:03:59.300162+00:00"}
+{"iteration": 10, "score": null, "event": "llm_error", "error": "Error code: 400 - {'error': {'message': \"Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.\", 'type': 'invalid_request_error', 'param': 'max_tokens', 'code': 'unsupported_parameter'}}", "timestamp": "2026-05-06T08:03:59.415430+00:00"}
+{"iteration": 11, "score": null, "event": "llm_error", "error": "Error code: 400 - {'error': {'message': \"Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.\", 'type': 'invalid_request_error', 'param': 'max_tokens', 'code': 'unsupported_parameter'}}", "timestamp": "2026-05-06T08:03:59.537774+00:00"}
+{"iteration": 12, "score": null, "event": "llm_error", "error": "Error code: 400 - {'error': {'message': \"Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.\", 'type': 'invalid_request_error', 'param': 'max_tokens', 'code': 'unsupported_parameter'}}", "timestamp": "2026-05-06T08:03:59.624386+00:00"}
+{"iteration": 13, "score": null, "event": "llm_error", "error": "Error code: 400 - {'error': {'message': \"Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.\", 'type': 'invalid_request_error', 'param': 'max_tokens', 'code': 'unsupported_parameter'}}", "timestamp": "2026-05-06T08:03:59.732029+00:00"}
+{"iteration": 14, "score": null, "event": "llm_error", "error": "Error code: 400 - {'error': {'message': \"Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.\", 'type': 'invalid_request_error', 'param': 'max_tokens', 'code': 'unsupported_parameter'}}", "timestamp": "2026-05-06T08:03:59.818244+00:00"}
+{"iteration": 15, "score": null, "event": "llm_error", "error": "Error code: 400 - {'error': {'message': \"Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.\", 'type': 'invalid_request_error', 'param': 'max_tokens', 'code': 'unsupported_parameter'}}", "timestamp": "2026-05-06T08:03:59.928771+00:00"}
+{"iteration": 1, "score": -999.0, "event": "revert", "timestamp": "2026-05-06T08:06:15.890328+00:00"}
+{"iteration": 2, "score": -999.0, "event": "revert", "timestamp": "2026-05-06T08:06:47.105843+00:00"}
+{"iteration": 3, "score": -999.0, "event": "revert", "timestamp": "2026-05-06T08:07:29.775571+00:00"}
+{"iteration": 1, "score": 1.0189, "event": "revert", "timestamp": "2026-05-06T08:13:09.277332+00:00"}
+{"iteration": 2, "score": -999.0, "event": "revert", "timestamp": "2026-05-06T08:13:59.117740+00:00"}
+{"iteration": 3, "score": 1.0207, "event": "revert", "timestamp": "2026-05-06T08:15:11.828413+00:00"}
+{"iteration": 4, "score": -999.0, "event": "revert", "timestamp": "2026-05-06T08:15:33.355225+00:00"}
+{"iteration": 5, "score": -999.0, "event": "revert", "timestamp": "2026-05-06T08:15:51.641896+00:00"}
+{"iteration": 6, "score": -999.0, "event": "revert", "timestamp": "2026-05-06T08:16:11.416810+00:00"}
+{"iteration": 7, "score": -999.0, "event": "revert", "timestamp": "2026-05-06T08:16:32.293838+00:00"}
+{"iteration": 8, "score": -999.0, "event": "revert", "timestamp": "2026-05-06T08:16:44.765955+00:00"}
+{"iteration": 1, "score": -999.0, "event": "revert", "timestamp": "2026-05-06T08:18:57.520721+00:00"}
+{"iteration": 2, "score": -999.0, "event": "revert", "timestamp": "2026-05-06T08:19:18.915683+00:00"}
+{"iteration": 3, "score": 1.0759, "event": "revert", "timestamp": "2026-05-06T08:21:04.466877+00:00"}
+{"iteration": 4, "score": -999.0, "event": "revert", "timestamp": "2026-05-06T08:21:37.690104+00:00"}
+{"iteration": 1, "score": 0.9549, "event": "revert", "timestamp": "2026-05-06T08:23:04.452790+00:00"}
+{"iteration": 2, "score": 0.9353, "event": "revert", "timestamp": "2026-05-06T08:24:16.941844+00:00"}
+{"iteration": 3, "score": -999.0, "event": "revert", "timestamp": "2026-05-06T08:24:38.734121+00:00"}
+{"iteration": 4, "score": 1.0106, "event": "revert", "timestamp": "2026-05-06T08:25:52.660809+00:00"}
+{"iteration": 5, "score": 0.9746, "event": "revert", "timestamp": "2026-05-06T08:27:06.559185+00:00"}
+{"iteration": 6, "score": 0.7718, "event": "revert", "timestamp": "2026-05-06T08:28:17.328840+00:00"}
+{"iteration": 7, "score": 0.8485, "event": "revert", "timestamp": "2026-05-06T08:29:28.941658+00:00"}
+{"iteration": 8, "score": 0.957, "event": "revert", "timestamp": "2026-05-06T08:30:40.213497+00:00"}
+{"iteration": 9, "score": 1.055, "event": "revert", "timestamp": "2026-05-06T08:31:54.519910+00:00"}
+{"iteration": 10, "score": 0.8869, "event": "revert", "timestamp": "2026-05-06T08:33:07.051166+00:00"}
+{"iteration": 11, "score": 1.1169, "event": "improvement", "delta": 0.01330000000000009, "timestamp": "2026-05-06T08:34:16.243637+00:00"}
+{"iteration": 12, "score": 0.8542, "event": "revert", "timestamp": "2026-05-06T08:35:26.891406+00:00"}
+{"iteration": 13, "score": 0.8277, "event": "revert", "timestamp": "2026-05-06T08:36:36.044332+00:00"}
+{"iteration": 14, "score": 0.986, "event": "revert", "timestamp": "2026-05-06T08:37:52.756186+00:00"}
+{"iteration": 15, "score": 0.8735, "event": "revert", "timestamp": "2026-05-06T08:39:03.893218+00:00"}
+{"iteration": 16, "score": 0.9385, "event": "revert", "timestamp": "2026-05-06T08:40:15.345682+00:00"}
+{"iteration": 17, "score": 0.828, "event": "revert", "timestamp": "2026-05-06T08:41:29.689061+00:00"}
+{"iteration": 18, "score": 1.1588, "event": "improvement", "delta": 0.04190000000000005, "timestamp": "2026-05-06T08:42:40.852716+00:00"}
+{"iteration": 19, "score": 1.0947, "event": "revert", "timestamp": "2026-05-06T08:43:51.674284+00:00"}
+{"iteration": 20, "score": 0.0691, "event": "revert", "timestamp": "2026-05-06T08:44:53.539924+00:00"}
+{"iteration": 21, "score": 1.1509, "event": "revert", "timestamp": "2026-05-06T08:46:05.110850+00:00"}
+{"iteration": 22, "score": 1.1235, "event": "revert", "timestamp": "2026-05-06T08:47:19.181278+00:00"}
+{"iteration": 23, "score": 1.0235, "event": "revert", "timestamp": "2026-05-06T08:48:29.280116+00:00"}
+{"iteration": 24, "score": 0.5272, "event": "revert", "timestamp": "2026-05-06T08:49:43.900282+00:00"}
+{"iteration": 25, "score": 0.8218, "event": "revert", "timestamp": "2026-05-06T08:50:59.934551+00:00"}
+{"iteration": 26, "score": -999.0, "event": "revert", "timestamp": "2026-05-06T08:51:22.082025+00:00"}
+{"iteration": 27, "score": 0.6724, "event": "revert", "timestamp": "2026-05-06T08:52:36.391562+00:00"}
+{"iteration": 28, "score": 0.8968, "event": "revert", "timestamp": "2026-05-06T08:53:59.343698+00:00"}
+{"iteration": 29, "score": 1.0035, "event": "revert", "timestamp": "2026-05-06T08:55:23.859900+00:00"}
+{"iteration": 30, "score": 0.8398, "event": "revert", "timestamp": "2026-05-06T08:56:32.909246+00:00"}
+{"iteration": 31, "score": 1.1737, "event": "improvement", "delta": 0.014899999999999913, "timestamp": "2026-05-06T08:57:58.157053+00:00"}
+{"iteration": 32, "score": 0.9669, "event": "revert", "timestamp": "2026-05-06T08:58:59.807029+00:00"}
+{"iteration": 33, "score": -999.0, "event": "revert", "timestamp": "2026-05-06T08:59:18.092530+00:00"}
+{"iteration": 34, "score": 0.8758, "event": "revert", "timestamp": "2026-05-06T09:00:13.520218+00:00"}
+{"iteration": 35, "score": 0.7922, "event": "revert", "timestamp": "2026-05-06T09:01:17.638700+00:00"}
+{"iteration": 36, "score": 0.929, "event": "revert", "timestamp": "2026-05-06T09:02:14.183688+00:00"}
+{"iteration": 37, "score": 1.2661, "event": "improvement", "delta": 0.09240000000000004, "timestamp": "2026-05-06T09:04:04.154554+00:00"}
+{"iteration": 38, "score": 0.9318, "event": "revert", "timestamp": "2026-05-06T09:06:27.317759+00:00"}
+{"iteration": 39, "score": 0.8112, "event": "revert", "timestamp": "2026-05-06T09:08:29.047922+00:00"}
+{"iteration": 40, "score": 0.9189, "event": "revert", "timestamp": "2026-05-06T09:10:18.689826+00:00"}
+{"iteration": 41, "score": 0.9039, "event": "revert", "timestamp": "2026-05-06T09:12:34.580438+00:00"}
+{"iteration": 42, "score": 0.95, "event": "revert", "timestamp": "2026-05-06T09:14:52.228571+00:00"}
+{"iteration": 43, "score": 1.2519, "event": "revert", "timestamp": "2026-05-06T09:15:54.588280+00:00"}
+{"iteration": 44, "score": 0.8778, "event": "revert", "timestamp": "2026-05-06T09:17:00.875520+00:00"}
+{"iteration": 45, "score": 1.1147, "event": "revert", "timestamp": "2026-05-06T09:18:02.020540+00:00"}
+{"iteration": 46, "score": 1.1239, "event": "revert", "timestamp": "2026-05-06T09:18:58.428280+00:00"}
+{"iteration": 47, "score": 1.1768, "event": "revert", "timestamp": "2026-05-06T09:20:40.315344+00:00"}
+{"iteration": 48, "score": 0.7888, "event": "revert", "timestamp": "2026-05-06T09:22:17.461661+00:00"}
+{"iteration": 49, "score": 1.2024, "event": "revert", "timestamp": "2026-05-06T09:24:01.083584+00:00"}
+{"iteration": 50, "score": 0.7036, "event": "revert", "timestamp": "2026-05-06T09:25:47.811617+00:00"}
+{"iteration": 51, "score": 1.1023, "event": "revert", "timestamp": "2026-05-06T09:27:35.497538+00:00"}
+{"iteration": 52, "score": -999.0, "event": "revert", "timestamp": "2026-05-06T09:28:02.532835+00:00"}
+{"iteration": 1, "score": 0.6461, "event": "revert", "timestamp": "2026-05-06T10:03:21.733971+00:00"}
+{"iteration": 2, "score": 1.6188, "event": "improvement", "delta": 0.3527, "timestamp": "2026-05-06T10:05:44.642275+00:00"}
+{"iteration": 3, "score": 2.0959, "event": "improvement", "delta": 0.47709999999999986, "timestamp": "2026-05-06T10:08:12.974240+00:00"}
+{"iteration": 4, "score": 1.0001, "event": "revert", "timestamp": "2026-05-06T10:10:23.126221+00:00"}
+{"iteration": 5, "score": 0.3725, "event": "revert", "timestamp": "2026-05-06T10:12:57.110376+00:00"}
+{"iteration": 6, "score": 1.2158, "event": "revert", "timestamp": "2026-05-06T10:15:15.057845+00:00"}
+{"iteration": 7, "score": 1.2083, "event": "revert", "timestamp": "2026-05-06T10:17:23.492529+00:00"}
+{"iteration": 8, "score": 1.0544, "event": "revert", "timestamp": "2026-05-06T10:19:34.975011+00:00"}
+{"iteration": 9, "score": -999.0, "event": "revert", "timestamp": "2026-05-06T10:19:51.055543+00:00"}
+{"iteration": 10, "score": 1.0562, "event": "revert", "timestamp": "2026-05-06T10:22:00.562680+00:00"}
+{"iteration": 11, "score": -999.0, "event": "revert", "timestamp": "2026-05-06T10:22:15.851455+00:00"}
+{"iteration": 1, "score": -999.0, "event": "revert", "timestamp": "2026-05-06T10:44:08.579416+00:00"}
+{"iteration": 2, "score": 1.7934, "event": "revert", "timestamp": "2026-05-06T10:46:04.044623+00:00"}
+{"iteration": 3, "score": 0.8688, "event": "revert", "timestamp": "2026-05-06T10:47:53.986274+00:00"}
+{"iteration": 4, "score": 1.0835, "event": "revert", "timestamp": "2026-05-06T10:49:49.398586+00:00"}
+{"iteration": 5, "score": 0.6744, "event": "revert", "timestamp": "2026-05-06T10:51:40.639602+00:00"}
+{"iteration": 6, "score": 2.0435, "event": "revert", "timestamp": "2026-05-06T10:53:29.782838+00:00"}
+{"iteration": 7, "score": 1.3882, "event": "revert", "timestamp": "2026-05-06T10:55:24.010406+00:00"}
+{"iteration": 8, "score": 1.0895, "event": "revert", "timestamp": "2026-05-06T10:57:13.862367+00:00"}
+{"iteration": 9, "score": 1.4262, "event": "revert", "timestamp": "2026-05-06T10:59:05.836318+00:00"}
+{"iteration": 10, "score": 0.7979, "event": "revert", "timestamp": "2026-05-06T11:00:58.839745+00:00"}
+{"iteration": 11, "score": 1.4315, "event": "revert", "timestamp": "2026-05-06T11:02:48.785034+00:00"}
+{"iteration": 12, "score": 1.2437, "event": "revert", "timestamp": "2026-05-06T11:04:39.383387+00:00"}
+{"iteration": 13, "score": 0.8726, "event": "revert", "timestamp": "2026-05-06T11:06:28.683196+00:00"}
+{"iteration": 14, "score": 0.978, "event": "revert", "timestamp": "2026-05-06T11:08:21.498017+00:00"}
+{"iteration": 15, "score": 0.7535, "event": "revert", "timestamp": "2026-05-06T11:10:12.541629+00:00"}
+{"iteration": 16, "score": 1.1447, "event": "revert", "timestamp": "2026-05-06T11:12:02.659331+00:00"}
+{"iteration": 17, "score": 1.1825, "event": "revert", "timestamp": "2026-05-06T11:13:54.203684+00:00"}
+{"iteration": 18, "score": 1.038, "event": "revert", "timestamp": "2026-05-06T11:15:47.737393+00:00"}
+{"iteration": 19, "score": -999.0, "event": "revert", "timestamp": "2026-05-06T11:16:02.694204+00:00"}
+{"iteration": 20, "score": 0.0674, "event": "revert", "timestamp": "2026-05-06T11:17:53.273813+00:00"}
+{"iteration": 21, "score": 0.3085, "event": "revert", "timestamp": "2026-05-06T11:19:49.224531+00:00"}
+{"iteration": 22, "score": 0.2141, "event": "revert", "timestamp": "2026-05-06T11:21:39.037989+00:00"}
+{"iteration": 23, "score": 1.2381, "event": "revert", "timestamp": "2026-05-06T11:23:32.866541+00:00"}
+{"iteration": 24, "score": 1.5518, "event": "revert", "timestamp": "2026-05-06T11:25:23.599885+00:00"}
+{"iteration": 25, "score": 1.668, "event": "revert", "timestamp": "2026-05-06T11:27:15.751464+00:00"}
+{"iteration": 0, "score": 2.1036, "event": "baseline", "timestamp": "2026-05-07T08:43:24.246099+00:00"}

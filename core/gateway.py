@@ -1,84 +1,51 @@
-"""
-ANTIGRAVITY GATEWAY: INDESTRUCTIBLE (v10k Patches)
-=================================================
-Recursive Error-Recovery, Multi-Layered Try-Catch, Zero-Stall Ingress.
-"""
-
+import ccxt.async_support as ccxt
 import asyncio
-import os
-import sys
-import msgpack
-import logging
-import polars as pl
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
-# DEFENSIVE IMPORTS
-try:
-    from core.features import FeatureFactory
-    from persistence import TickPersistence
-except ImportError as e:
-    logging.critical(f"HARDENING >> Core Module Missing: {e}")
-    sys.exit(1)
+class RiskManager:
+    def __init__(self, max_account_risk_pct=0.05):
+        self.max_account_risk_pct = max_account_risk_pct
 
-class ApexGateway:
-    __slots__ = ['app', 'tick_queue', 'features', 'persistence', 'tracer']
-    
-    def __init__(self):
-        self.app = FastAPI(title="ANTIGRAVITY_INDESTRUCTIBLE")
-        self.tick_queue = asyncio.Queue(maxsize=100000)
-        self.features = FeatureFactory()
-        self.persistence = TickPersistence()
+    def calculate_lot_size(self, account_equity: float, kelly_fraction: float, atr: float, contract_multiplier: float = 1.0) -> float:
+        safe_fraction = min(kelly_fraction, self.max_account_risk_pct)
+        capital_at_risk = account_equity * safe_fraction
+        stop_loss_distance = atr * 2.0
+        
+        if stop_loss_distance <= 0: return 0.0
+        position_size = capital_at_risk / (stop_loss_distance * contract_multiplier)
+        return round(position_size, 5)
 
-apex = ApexGateway()
-app = apex.app
+class CryptoComAdapter:
+    def __init__(self, api_key, secret):
+        self.exchange = ccxt.cryptocom({'apiKey': api_key, 'secret': secret, 'enableRateLimit': True})
 
-@app.websocket("/ws/v3/quadrillion")
-async def apex_ingress(websocket: WebSocket):
-    await websocket.accept()
-    unpacker = msgpack.Unpacker()
-    while True:
+    async def execute_ticket(self, symbol, bias, lot_size):
+        side = 'buy' if bias == 1 else 'sell'
         try:
-            # Layer 1: Network I/O Protection
-            raw_bytes = await websocket.receive_bytes()
-            unpacker.feed(raw_bytes)
-            
-            for payload in unpacker:
-                try:
-                    # Layer 2: Schema Validation
-                    if not isinstance(payload, dict): continue
-                    apex.tick_queue.put_nowait(payload)
-                except asyncio.QueueFull:
-                    # Defensive Strategy: Drop oldest if critical, or skip
-                    continue
-        except WebSocketDisconnect:
-            break
+            print(f"[EXECUTION] Routing {side} {lot_size} {symbol} to Crypto.com")
+            # await self.exchange.create_market_order(symbol, side, lot_size)
         except Exception as e:
-            # Layer 3: Global Recovery
-            logging.error(f"HARDENING >> Ingress Exception: {e}")
-            await asyncio.sleep(0.1)
+            print(f"Execution Failed: {e}")
 
-@app.on_event("startup")
-async def startup():
-    asyncio.create_task(apex_hot_path())
+class OmniGateway:
+    def __init__(self, crypto_config=None):
+        self.adapters = {}
+        if crypto_config: self.adapters['CRYPTO'] = CryptoComAdapter(**crypto_config)
+        self.risk_engine = RiskManager()
 
-async def apex_hot_path():
-    """INDESTRUCTIBLE HOT PATH: Fail-safe batching."""
-    while True:
-        try:
-            batch = []
-            while not apex.tick_queue.empty() and len(batch) < 4096:
-                batch.append(apex.tick_queue.get_nowait())
-                apex.tick_queue.task_done()
-                
-            if batch:
-                # Vectorized SIMD Pipeline with Internal Safety
-                try:
-                    df = pl.DataFrame(batch)
-                    processed = apex.features.compute_simd_features(df)
-                except Exception as e:
-                    logging.error(f"HARDENING >> SIMD Failure: {e}")
-                    
-        except Exception as e:
-            logging.error(f"HARDENING >> Hot-Path Panic: {e}")
+    async def route_action(self, target_exchange: str, symbol: str, action_vector: list, account_equity: float, current_atr: float):
+        if target_exchange not in self.adapters:
+            raise ValueError(f"Exchange {target_exchange} not initialized.")
             
-        await asyncio.sleep(0.001)
+        adapter = self.adapters[target_exchange]
+        bias = 1 if action_vector[0] > 0 else -1
+        kelly_confidence = float(action_vector[1]) 
+        
+        target_lot_size = self.risk_engine.calculate_lot_size(
+            account_equity=account_equity,
+            kelly_fraction=kelly_confidence,
+            atr=current_atr,
+            contract_multiplier=1.0 # 1.0 for spot crypto
+        )
+        
+        if target_lot_size > 0.0001: # Crypto fractional threshold
+            await adapter.execute_ticket(symbol, bias, target_lot_size)

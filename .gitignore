@@ -42,3 +42,11 @@ trading_log.txt
 
 # --- Rust ---
 rust_inference/target/
+
+# --- Temporary & Local Backups ---
+.autoresearch_backups/
+ws_sample*.txt
+ws_sniff*.py
+check_ws_http.py
+dashboard/dump_ws.py
+
