@@ -29,7 +29,10 @@ class CryptoComAdapter:
 class OmniGateway:
     def __init__(self, crypto_config=None):
         self.adapters = {}
-        if crypto_config: self.adapters['CRYPTO'] = CryptoComAdapter(**crypto_config)
+        if crypto_config:
+            adapter = CryptoComAdapter(**crypto_config)
+            self.adapters['CRYPTO'] = adapter
+            self.adapters['CRYPTOCOM'] = adapter
         self.risk_engine = RiskManager()
 
     async def route_action(self, target_exchange: str, symbol: str, action_vector: list, account_equity: float, current_atr: float):

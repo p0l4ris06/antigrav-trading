@@ -11,7 +11,7 @@ export const SYMBOL_META: Record<Symbol, { label: string; basePrice: number; vol
   BTCUSDT:  { label: 'BTC / USDT',  basePrice: 50000, volatility: 5.0  },
   ETHUSDT:  { label: 'ETH / USDT',  basePrice: 3000,  volatility: 2.0  },
   SOLUSDT:  { label: 'SOL / USDT',  basePrice: 170,   volatility: 0.8  },
-  NVDAUSDT: { label: 'NVDA / USD',  basePrice: 138,   volatility: 0.5  },
+  NVDAUSDT: { label: 'NVDA / USD',  basePrice: 138,   volatility: 0.4  },
 };
 
 export type Tick = {
@@ -40,6 +40,7 @@ export type SystemStatus = {
   overseer_events: Array<{ timestamp?: string; event?: string; [key: string]: unknown }>;
   regime_probabilities: number[];
   portfolio_weights: number[];
+  ppo_model_loaded: boolean;
 };
 
 // Per-symbol simulated state (for non-BTC symbols the backend doesn't stream)
@@ -80,6 +81,7 @@ export function useMarketData() {
     shadow_fork_active: false, ticks_ingested: 0,
     buffer_height: 0, uptime_seconds: 0,
     overseer_events: [], regime_probabilities: [], portfolio_weights: [],
+    ppo_model_loaded: false,
   });
 
   const simPrices = useRef<Record<Symbol, number>>(

@@ -1,52 +1,50 @@
-# --- Python ---
+# Python
 __pycache__/
 *.py[cod]
-*$py.class
+.venv/
+venv/
 *.egg-info/
 dist/
 build/
-*.egg
-.venv/
-venv/
-node_modules/
 
-# --- Environment ---
+# Environment
 .env*
 
-# --- IDE ---
+# IDE
 .vscode/
 .idea/
-*.swp
-*.swo
 
-# --- OS ---
+# OS
 Thumbs.db
 .DS_Store
 
-# --- ClickHouse local data ---
-clickhouse_data/
+# Data & models (large files)
 data/
-db/
-
-# --- Model artifacts ---
 models/
+*.parquet
 *.onnx
 *.zip
 *.pt
 *.pth
 
-# --- Logs ---
-*.log
+# Logs & state
 logs/
+*.log
 trading_log.txt
-
-# --- Rust ---
-rust_inference/target/
-
-# --- Temporary & Local Backups ---
+.daemon_state.json
+.daemon_halt
+.checkpoints/
 .autoresearch_backups/
-ws_sample*.txt
-ws_sniff*.py
-check_ws_http.py
-dashboard/dump_ws.py
+experiments/
 
+# DB
+clickhouse_data/
+db/
+
+# Dashboard build
+dashboard/node_modules/
+dashboard/dist/
+
+# Rust
+rust_engine/target/
+rust_inference/target/

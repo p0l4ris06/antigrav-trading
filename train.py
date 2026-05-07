@@ -117,7 +117,7 @@ def main():
     model.learn(total_timesteps=args.timesteps)
 
     # 4. Walk-Forward Evaluation (Out-Of-Sample)
-    test_env = KellyConvexEnv(data_stream=test_data, max_leverage=3.0)
+    test_env = KellyConvexEnv(data_stream=test_data, max_leverage=3.0, max_episode_steps=len(test_data))
     final_oos_wealth = evaluate(model, test_env)
 
     # --- NEW: SAVE THE MODEL FOR LIVE TRADING ---

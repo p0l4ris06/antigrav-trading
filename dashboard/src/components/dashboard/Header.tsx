@@ -69,6 +69,11 @@ export function Header({ onAccountClick }: { onAccountClick: () => void }) {
         {latestTick && (
           <Chip label="Spread" value={`$${obi?.spread ?? '—'}`} />
         )}
+        <Chip
+          label="Model"
+          value={status.ppo_model_loaded ? 'LOADED' : 'MISSING'}
+          color={status.ppo_model_loaded ? 'var(--green)' : 'var(--amber)'}
+        />
       </div>
 
       <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
@@ -82,16 +87,27 @@ export function Header({ onAccountClick }: { onAccountClick: () => void }) {
         >
           Connect Account
         </button>
-        <button style={{
-          background: 'var(--bg-glass)', border: '1px solid var(--border-strong)',
-          color: 'var(--text-secondary)', borderRadius: 8, padding: '4px 14px',
-          fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font)',
-        }}>Force Retrain</button>
-        <button style={{
-          background: 'rgba(255,69,58,0.10)', border: '1px solid rgba(255,69,58,0.30)',
-          color: 'var(--red)', borderRadius: 8, padding: '4px 14px',
-          fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font)', fontWeight: 600,
-        }}>Kill Switch</button>
+        <button
+          onClick={async () => {
+            await fetch(`${import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'}/api/control/action`,
+              { method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ action: 'retrain' }) });
+          }}
+          style={{ background: 'var(--bg-glass)', border: '1px solid var(--border-strong)',
+            color: 'var(--text-secondary)', borderRadius: 8, padding: '4px 14px',
+            fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font)' }}
+        >Force Retrain</button>
+        <button
+          onClick={async () => {
+            if (!confirm('Activate kill switch? This halts all live trading.')) return;
+            await fetch(`${import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'}/api/control/action`,
+              { method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ action: 'kill' }) });
+          }}
+          style={{ background: 'rgba(255,69,58,0.10)', border: '1px solid rgba(255,69,58,0.30)',
+            color: 'var(--red)', borderRadius: 8, padding: '4px 14px',
+            fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font)', fontWeight: 600 }}
+        >Kill Switch</button>
       </div>
     </header>
   );

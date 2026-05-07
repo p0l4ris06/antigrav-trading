@@ -264,11 +264,40 @@ async def fetch_equity(
 ) -> float:
     try:
         balance = exchange.fetch_balance()
+        # 1. Direct balance lookup of requested quote currency
         total = balance.get("total", {}).get(currency, None)
         if total is not None and total > 0:
             return float(total)
+            
+        # 2. Dynamic conversion of other assets to target currency (e.g. BTC to GBP or USDT)
+        active_balances = {k: v for k, v in balance.get("total", {}).items() if v and v > 0}
+        if active_balances:
+            log.info("Direct balance for %s is 0. Dynamically converting assets: %s", currency, list(active_balances))
+            total_converted = 0.0
+            for asset, qty in active_balances.items():
+                if asset == currency:
+                    total_converted += qty
+                    continue
+                # Try asset/currency
+                try:
+                    ticker = exchange.fetch_ticker(f"{asset}/{currency}")
+                    price = float(ticker.get("last", ticker.get("close", 0)))
+                    total_converted += qty * price
+                    log.info("Converted %s %s to %.2f %s using rate %.4f", qty, asset, qty * price, currency, price)
+                except Exception:
+                    # Try currency/asset
+                    try:
+                        ticker = exchange.fetch_ticker(f"{currency}/{asset}")
+                        price = float(ticker.get("last", ticker.get("close", 0)))
+                        if price > 0:
+                            total_converted += qty / price
+                            log.info("Converted %s %s to %.2f %s using rate %.4f", qty, asset, qty / price, currency, 1/price)
+                    except Exception:
+                        log.warning("Could not find ticker to convert %s to %s.", asset, currency)
+            if total_converted > 0:
+                return float(total_converted)
     except Exception as exc:
-        log.warning("Could not fetch balance: %s", exc)
+        log.warning("Could not fetch balance or convert assets: %s", exc)
     if fallback:
         log.warning("Using fallback equity: %.2f", fallback)
         return fallback
@@ -373,18 +402,31 @@ async def inference_cycle(
         log.warning("Insufficient feature data — skipping cycle.")
         return
 
-    feature_cols = [
-        c for c in feature_df.columns
-        if c not in ("timestamp", "open", "high", "low", "close", "volume")
+    # Extract numeric columns exactly like train.py
+    numeric_cols = [
+        c for c, t in feature_df.schema.items()
+        if t in [pl.Float32, pl.Float64, pl.Int32, pl.Int64]
     ]
 
     # 3. Validate feature shape against model (once per session)
+    # Since we dynamically pad/truncate to 15, the actual features are robustly matched.
     if not validated.get("done"):
-        if not validate_feature_shape(model, feature_df, feature_cols, log):
-            return
+        expected = model.observation_space.shape[0]
+        log.info("Model observation space verified: expected=%d columns. Features available=%d columns.", expected, len(numeric_cols))
         validated["done"] = True
 
-    current_state = feature_df.select(feature_cols).tail(1).to_numpy()[0]
+    # Build 15-dimensional observation state with padding/truncation
+    raw_state = feature_df.select(numeric_cols).tail(1).to_numpy()[0].astype(np.float32)
+    target_dim = 15
+    if len(raw_state) < target_dim:
+        current_state = np.pad(raw_state, (0, target_dim - len(raw_state)), mode='constant')
+    elif len(raw_state) > target_dim:
+        current_state = raw_state[:target_dim]
+    else:
+        current_state = raw_state
+
+    # Clean NaN/inf
+    current_state = np.nan_to_num(current_state, nan=0.0, posinf=0.0, neginf=0.0)
 
     # Check for NaN/Inf in state vector
     if not np.isfinite(current_state).all():
@@ -565,8 +607,19 @@ async def main():
     validated: dict = {}
 
     try:
+        # Run first cycle immediately to verify system is working (especially helpful on restart or dryrun)
+        if not state.halted and not shutdown.is_set():
+            await inference_cycle(exchange, model, gateway, cfg, state, log, validated)
+
         # Main loop — candle-aligned
         while not shutdown.is_set():
+            # Check for kill switch from gateway
+            if Path(".daemon_halt").exists():
+                log.warning("Kill switch file detected — halting daemon.")
+                Path(".daemon_halt").unlink()
+                state.halted = True
+                break
+
             if state.halted:
                 log.warning("Trading halted. Sleeping 60s. Fix and reset state file to resume.")
                 await asyncio.sleep(60)

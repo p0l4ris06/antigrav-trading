@@ -1,0 +1,112 @@
+Connected to simulated_feed. Capturing 10 messages...
+
+{
+  "symbol": "BTCUSDT",
+  "bid_price": 50006.37,
+  "ask_price": 50006.72,
+  "bid_size": 0.074,
+  "ask_size": 2.0489,
+  "last_price": 50006.54,
+  "last_size": 0.7427,
+  "trade_id": 0
+}
+---
+{
+  "symbol": "BTCUSDT",
+  "bid_price": 49998.37,
+  "ask_price": 49999.12,
+  "bid_size": 0.7305,
+  "ask_size": 4.2082,
+  "last_price": 49998.98,
+  "last_size": 0.1114,
+  "trade_id": 1
+}
+---
+{
+  "symbol": "BTCUSDT",
+  "bid_price": 50002.12,
+  "ask_price": 50002.23,
+  "bid_size": 0.153,
+  "ask_size": 3.372,
+  "last_price": 50002.14,
+  "last_size": 0.4307,
+  "trade_id": 2
+}
+---
+{
+  "symbol": "BTCUSDT",
+  "bid_price": 49989.31,
+  "ask_price": 49989.85,
+  "bid_size": 4.3618,
+  "ask_size": 1.742,
+  "last_price": 49989.52,
+  "last_size": 0.1902,
+  "trade_id": 3
+}
+---
+{
+  "symbol": "BTCUSDT",
+  "bid_price": 49988.17,
+  "ask_price": 49988.45,
+  "bid_size": 0.4248,
+  "ask_size": 3.2548,
+  "last_price": 49988.37,
+  "last_size": 1.5545,
+  "trade_id": 4
+}
+---
+{
+  "symbol": "BTCUSDT",
+  "bid_price": 49988.4,
+  "ask_price": 49989.38,
+  "bid_size": 0.9825,
+  "ask_size": 1.5477,
+  "last_price": 49988.67,
+  "last_size": 0.193,
+  "trade_id": 5
+}
+---
+{
+  "symbol": "BTCUSDT",
+  "bid_price": 49992.66,
+  "ask_price": 49993.04,
+  "bid_size": 1.2324,
+  "ask_size": 1.2221,
+  "last_price": 49993.01,
+  "last_size": 0.4486,
+  "trade_id": 6
+}
+---
+{
+  "symbol": "BTCUSDT",
+  "bid_price": 49987.73,
+  "ask_price": 49988.55,
+  "bid_size": 1.9566,
+  "ask_size": 0.977,
+  "last_price": 49987.92,
+  "last_size": 0.45,
+  "trade_id": 7
+}
+---
+{
+  "symbol": "BTCUSDT",
+  "bid_price": 49990.82,
+  "ask_price": 49991.52,
+  "bid_size": 0.136,
+  "ask_size": 4.1609,
+  "last_price": 49991.08,
+  "last_size": 0.1549,
+  "trade_id": 8
+}
+---
+{
+  "symbol": "BTCUSDT",
+  "bid_price": 49990.25,
+  "ask_price": 49990.73,
+  "bid_size": 0.068,
+  "ask_size": 1.4809,
+  "last_price": 49990.71,
+  "last_size": 0.1456,
+  "trade_id": 9
+}
+---
