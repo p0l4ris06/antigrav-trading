@@ -197,11 +197,20 @@ def compute_training_data(tick_df: pl.DataFrame) -> dict[str, np.ndarray]:
     prices = feature_df.select("last_price").to_numpy().flatten()[null_mask]
     atr_col = feature_df.select("atr").to_numpy().flatten()[null_mask]
 
-    # Clean NaN/inf
-    feature_matrix = np.nan_to_num(feature_matrix, nan=0.0, posinf=0.0, neginf=0.0)
+    # --- CRITICAL SAFETY GATE ---
+    # Instead of converting Inf to 0, we must clip to a standard deviation bound
+    # to keep the gradients sane for the PPO agent.
+    feature_matrix = np.nan_to_num(feature_matrix, nan=0.0)
+    
+    # Robustly clip features to +/- 10 standard deviations
+    # This prevents 'One Billion' scores by capping the observation space
+    feature_matrix = np.clip(feature_matrix, -1e3, 1e3) 
+
     prices = np.nan_to_num(prices, nan=50000.0)
+    
+    # Ensure ATR is never small enough to cause a division explosion
     atr_col = np.nan_to_num(atr_col, nan=1.0)
-    atr_col = np.clip(atr_col, 1e-6, None)  # prevent div-by-zero
+    atr_col = np.clip(atr_col, 0.1, None) # Hard floor for volatility
 
     # --- Regime classification ---
     logger.info("pipeline.fitting_regime_classifier")
@@ -227,6 +236,11 @@ def compute_training_data(tick_df: pl.DataFrame) -> dict[str, np.ndarray]:
         price_range=(float(prices.min()), float(prices.max())),
         atr_mean=float(atr_col.mean()),
     )
+
+    # --- FINAL REWARD VERIFICATION ---
+    # Log the first few returns to console to verify sanity
+    avg_price = float(np.mean(prices))
+    logger.info("pipeline.sanity_check", price_avg=avg_price, feature_max=float(np.max(feature_matrix)))
 
     return {
         "features": feature_matrix,

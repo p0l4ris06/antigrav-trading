@@ -16,15 +16,29 @@ class RiskManager:
 
 class CryptoComAdapter:
     def __init__(self, api_key, secret):
-        self.exchange = ccxt.cryptocom({'apiKey': api_key, 'secret': secret, 'enableRateLimit': True})
+        self.exchange = ccxt.cryptocom({
+            'apiKey': api_key, 
+            'secret': secret, 
+            'enableRateLimit': True
+        })
 
     async def execute_ticket(self, symbol, bias, lot_size):
         side = 'buy' if bias == 1 else 'sell'
         try:
-            print(f"[EXECUTION] Routing {side} {lot_size} {symbol} to Crypto.com")
-            # await self.exchange.create_market_order(symbol, side, lot_size)
+            # 1. Load markets to get precision rules (do this once on init if possible)
+            await self.exchange.load_markets()
+            
+            # 2. Format the lot size to exactly match the exchange's required decimal places
+            formatted_lot_size = self.exchange.amount_to_precision(symbol, lot_size)
+            
+            print(f"[EXECUTION] Routing {side} {formatted_lot_size} {symbol} natively via CCXT")
+            
+            # 3. Fire the native order
+            order = await self.exchange.create_market_order(symbol, side, float(formatted_lot_size))
+            print(f"[SUCCESS] Order filled at {order.get('average', 'Market')}")
+            return order
         except Exception as e:
-            print(f"Execution Failed: {e}")
+            print(f"[ERROR] Native Execution Failed: {e}")
 
 class OmniGateway:
     def __init__(self, crypto_config=None):

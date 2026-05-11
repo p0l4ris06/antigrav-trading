@@ -75,7 +75,6 @@ class OptimizerConfig:
     # Files the LLM is asked to mutate
     target_files: list[str] = field(default_factory=lambda: [
         "core/features.py",
-        "core/agent.py",
     ])
 
     # Training command — must print FITNESS_SCORE: <float> to stdout
@@ -359,6 +358,7 @@ def extract_code_blocks(text: str) -> list[str]:
 # ─────────────────────────────────────────────
 
 def build_system_prompt(cfg: OptimizerConfig, n_features: int = 0) -> str:
+    target_list = ", ".join(cfg.target_files)
     base = f"""You are an elite quantitative researcher optimising a Reinforcement Learning trading system called Antigravity.
 
 Your objective: maximise the Out-of-Sample Logarithmic Wealth Utility (FITNESS_SCORE) as evaluated by Walk-Forward Optimisation. Train window = first 18 months. Eval window = final 6 months (unseen).
@@ -366,7 +366,7 @@ Your objective: maximise the Out-of-Sample Logarithmic Wealth Utility (FITNESS_S
 CRITICAL CONSTRAINT: features.py MUST output EXACTLY {n_features} feature columns. Do not add or remove features. Only modify their mathematical definitions.
 
 Rules:
-1. Return EXACTLY two Python code blocks in order: first core/features.py, then core/agent.py.
+1. Return EXACTLY {len(cfg.target_files)} Python code block(s) in order: {target_list}.
 2. Wrap each in ```python ... ``` fences.
 3. Use Polars (SIMD-accelerated) for all feature engineering. No pandas in features.py.
 4. Do not introduce look-ahead bias.
@@ -421,7 +421,7 @@ HARD CONSTRAINTS -- READ BEFORE WRITING ANY CODE:
 {files_block}
 
 Improve the mathematical definitions of the existing features only.
-Output core/features.py first, then core/agent.py.
+Output the updated target files in order: {", ".join(cfg.target_files)}.
 """
 
     log.info("Requesting mutation from %s (%s) temp=%.2f", cfg.provider, cfg.model, temperature)
@@ -462,9 +462,10 @@ def apply_mutation(
 ) -> bool:
     blocks = extract_code_blocks(llm_response)
 
-    if len(blocks) < 2:
+    if len(blocks) < len(target_files):
         log.error(
-            "Expected 2 code blocks, got %d. LLM output snippet:\n%s",
+            "Expected %d code blocks, got %d. LLM output snippet:\n%s",
+            len(target_files),
             len(blocks),
             llm_response[:400],
         )

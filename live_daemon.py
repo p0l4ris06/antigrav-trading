@@ -524,9 +524,13 @@ async def inference_cycle(
     bear_bos = float(current_state[-3]) if len(current_state) >= 3 else 0.0
     regime = "TREND" if (bull_bos > 0.5 or bear_bos > 0.5) else "MEAN_REVERSION"
 
+    # Calculate risk-managed allocation (Defaulting to 5% risk cap like gateway's RiskManager)
+    risk_cap_pct = 0.05
+    safe_risk_fraction = min(kelly_confidence, risk_cap_pct)
+
     log.info(
-        "Agent -> bias=%.4f  kelly=%.2f%%  regime=%s  ATR=%.4f",
-        bias_raw, kelly_confidence * 100, regime, current_atr,
+        "Agent -> bias=%.4f  kelly_raw=%.2f%% (CAPPED SAFE RISK: %.2f%%)  regime=%s  ATR=%.4f",
+        bias_raw, kelly_confidence * 100, safe_risk_fraction * 100, regime, current_atr,
     )
 
     # 5. Risk gates
@@ -739,6 +743,11 @@ async def main():
             import pickle
             with open(vec_normalize_path, "rb") as f:
                 vec_norm = pickle.load(f)
+            
+            # --- CRITICAL FIX: FREEZE THE NORMALIZER ---
+            vec_norm.training = False
+            vec_norm.norm_reward = False
+            
             log.info("VecNormalize loaded successfully. Mean shape: %s", vec_norm.obs_rms.mean.shape)
         except Exception as exc:
             log.warning("Could not load VecNormalize: %s. Using raw observations.", exc)
