@@ -35,6 +35,7 @@ from antigravity.gateway.ws_consumer import TickConsumer
 from antigravity.overseer.daemon import AgenticOverseer
 from antigravity.regime.classifier import RegimeClassifier
 from antigravity.tracing import init_tracing, shutdown_tracing
+from core.backtester import AntigravBacktester
 
 logger = structlog.get_logger(__name__)
 
@@ -226,10 +227,21 @@ async def lifespan(app: FastAPI):
 
     # --- Feature Factory ---
     app_state.feature_factory = FeatureFactory()
-    # Align with features pruned during training to maintain dimension consistency
-    pruned_features = ['microprice_deviation', 'vwap_300s', 'vwap_900s', 'vol_20', 'vol_50']
-    for feat in pruned_features:
-        app_state.feature_factory.disable_feature(feat)
+    
+    # Dynamically prune correlated features to prevent dimensionality curse
+    # Uses Spearman rank correlation threshold (default 0.85)
+    if app_state.ch_manager:
+        # Load recent data for pruning decision
+        now = datetime.now(timezone.utc)
+        start = now - timedelta(hours=24)
+        try:
+            df = await app_state.ch_manager.fetch_data(symbol="BTCUSDT", start=start, end=now)
+            if df is not None and not df.is_empty():
+                dropped = app_state.feature_factory.prune_correlated_features(df)
+                logger.info("gateway.features_pruned", dropped=dropped)
+        except Exception:
+            pass
+            
     logger.info("gateway.feature_factory_ready", active_features=app_state.feature_factory.get_feature_names())
 
     # --- Regime Classifier ---
@@ -533,6 +545,36 @@ async def get_status():
         "portfolio_weights": app_state.portfolio_weights,
         "ppo_model_loaded": app_state.ppo_model is not None,
         "prices": app_state.prices,
+    }
+
+
+@app.get("/api/backtest/run")
+async def run_backtest(symbol: str = "BTC"):
+    """Trigger an offline backtest and return performance metrics."""
+    backtester = AntigravBacktester(symbol=symbol)
+    backtester.load_model()
+    
+    # Use data from the data/ directory
+    data_path = f"data/{symbol}_USDT_15m.parquet"
+    if not os.path.exists(data_path):
+        # Fallback to whatever parquet is available
+        data_files = [f for f in os.listdir("data") if f.endswith(".parquet")]
+        if not data_files:
+            return {"status": "failed", "detail": "No historical data found"}
+        data_path = os.path.join("data", data_files[0])
+
+    # Run in thread to avoid blocking the gateway's event loop
+    equity_curve, actions = await asyncio.to_thread(backtester.run, data_path)
+    
+    # Calculate summary metrics
+    final_return = (equity_curve[-1] - 1.0) * 100
+    return {
+        "status": "success",
+        "symbol": symbol,
+        "data_path": data_path,
+        "final_return_pct": round(final_return, 2),
+        "final_equity": round(equity_curve[-1], 4),
+        "equity_curve": equity_curve[::10],  # Downsample for JSON transport
     }
 
 

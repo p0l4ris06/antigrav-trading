@@ -77,6 +77,9 @@ class DaemonConfig:
     max_drawdown_pct: float = 0.15           # halt if equity drops 15% from HWM
     circuit_breaker_losses: int = 4          # halt after N consecutive losses
     min_kelly_threshold: float = 0.05        # skip trade if kelly confidence below this
+    
+    # Control signals
+    force_resume: bool = False               # bypass circuit breaker/drawdown
 
     # Exchange
     exchange_name: str = "binance"
@@ -359,6 +362,12 @@ async def fetch_equity(
 # ─────────────────────────────────────────────
 
 def check_circuit_breaker(state: DaemonState, cfg: DaemonConfig, log: logging.Logger) -> bool:
+    if cfg.force_resume:
+        log.info("FORCED RESUME: Bypassing circuit breaker checks.")
+        state.halted = False
+        state.consecutive_losses = 0
+        return True
+        
     if state.consecutive_losses >= cfg.circuit_breaker_losses:
         log.error(
             "CIRCUIT BREAKER TRIPPED: %d consecutive losses ≥ threshold %d. Trading halted.",
@@ -661,8 +670,8 @@ def parse_args(cfg: DaemonConfig) -> DaemonConfig:
     elif tf.endswith("d"):
         cfg.poll_interval_seconds = int(tf[:-1]) * 86400
 
-    if args.poll_interval is not None:
-        cfg.poll_interval_seconds = args.poll_interval
+    # --poll-interval is intentionally NOT mapped to poll_interval_seconds here
+    # to enforce strict timeframe alignment (e.g. 15 minutes), resolving the 10-second infer loop issue.
     return cfg
 
 
@@ -679,8 +688,8 @@ async def main():
     state = DaemonState(cfg.state_file)
 
     log.info("=== ANTIGRAVITY OMNI-NODE DAEMON START ===")
-    log.info("Symbol: %s | Timeframe: %s | Exchange: %s | Dry-run: %s",
-             cfg.symbol, cfg.timeframe, cfg.exchange_name, cfg.dry_run)
+    log.info("Symbol: %s | Timeframe: %s | Exchange: %s | Dry-run: %s | Poll Interval: %ds",
+             cfg.symbol, cfg.timeframe, cfg.exchange_name, cfg.dry_run, cfg.poll_interval_seconds)
 
     # Graceful shutdown
     shutdown = asyncio.Event()
@@ -718,7 +727,7 @@ async def main():
 
     # Load model ONCE
     log.info("Loading PPO model from %s ...", cfg.model_path)
-    model = PPO.load(cfg.model_path)
+    model = PPO.load(cfg.model_path, device='cpu')
     log.info("Model loaded. Observation space: %s", model.observation_space.shape)
 
     # Load VecNormalize stats
@@ -786,11 +795,31 @@ async def main():
                 now = time.time()
                 time_left = end_time - now
                 if now - last_heartbeat >= 10.0 or last_heartbeat == 0.0:
+                    display_equity = state.simulated_equity if cfg.dry_run else (cfg.account_equity or 0.0)
+                    if cfg.dry_run and state.position and state.entry_price > 0:
+                        try:
+                            act_sym = "BTC/USDT" if (exchange.id == "cryptocom" and cfg.symbol == "BTC/GBP") else cfg.symbol
+                            ticker = exchange.fetch_ticker(act_sym)
+                            cp = float(ticker.get("last", state.entry_price))
+                            if exchange.id == "cryptocom" and cfg.symbol == "BTC/GBP":
+                                kraken = ccxt.kraken()
+                                k_tick = kraken.fetch_ticker("USDT/GBP")
+                                cp *= float(k_tick.get("last", 1.0))
+                            
+                            pnl_pct = (cp - state.entry_price) / state.entry_price
+                            if state.position == "short": pnl_pct = -pnl_pct
+                            
+                            # Calculate unrealized P&L
+                            unrealized = pnl_pct * state.simulated_equity
+                            display_equity += unrealized
+                        except Exception as e:
+                            pass
+
                     pos_str = f"POSITION: {state.position.upper()} (Entry: {state.entry_price:.2f})" if state.position else "POSITION: NONE"
-                    balance_prefix = "Simulated Balance: GBP" if cfg.dry_run else "Balance:"
+                    balance_prefix = "Simulated Balance (Live P&L): GBP" if cfg.dry_run else "Balance:"
                     log.info(
                         "[REAL-TIME STATUS] %s %.2f | %s | Next candle in %dm %ds",
-                        balance_prefix, state.simulated_equity if cfg.dry_run else (cfg.account_equity or 0.0),
+                        balance_prefix, display_equity,
                         pos_str, int(time_left // 60), int(time_left % 60)
                     )
                     last_heartbeat = now
