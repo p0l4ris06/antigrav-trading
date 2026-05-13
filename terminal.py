@@ -1,9 +1,13 @@
 # terminal.py
-import time
 import os
-import typer
+import time
 import numpy as np
+import polars as pl
+import typer
 from datetime import datetime
+from dotenv import load_dotenv
+
+load_dotenv()
 from rich.live import Live
 from rich.layout import Layout
 from rich.panel import Panel
@@ -87,11 +91,17 @@ def live_trade(symbol: str = "BTC/USDT", paper: bool = True):
 
                 # B. Compute Features (The RL 'Eyes')
                 features_df = factory.compute_features(df)
-                latest_obs = features_df.tail(1).to_numpy()[0]
+                numeric_cols = [c for c, t in features_df.schema.items() if t in [pl.Float32, pl.Float64, pl.Int32, pl.Int64]]
+                obs_np = features_df.select(numeric_cols).tail(1).to_numpy().astype(np.float32)[0]
 
-                # Align to 15 dimensions (Padding)
-                if len(latest_obs) < 15:
-                    latest_obs = np.pad(latest_obs, (0, 15 - len(latest_obs)), 'constant')
+                # Align to 15 dimensions (Padding/Truncation) matching train.py
+                if len(obs_np) < 15:
+                    obs_np = np.pad(obs_np, (0, 15 - len(obs_np)), 'constant')
+                elif len(obs_np) > 15:
+                    obs_np = obs_np[:15]
+
+                obs_np = np.nan_to_num(obs_np, nan=0.0, posinf=0.0, neginf=0.0)
+                latest_obs = np.clip(obs_np, -1e3, 1e3)
 
                 # C. Agent Inference (The RL 'Brain')
                 action, _ = model.predict(latest_obs, deterministic=True)
@@ -106,11 +116,10 @@ def live_trade(symbol: str = "BTC/USDT", paper: bool = True):
                 # E. Execution
                 log_text = bridge.execute_kelly_trade(symbol, raw_bias, safe_kelly)
 
-                # Update the UI
-                live.update(generate_dashboard(current_price, equity, raw_bias, safe_kelly * 100, log_text))
-
-                # Sleep until next 15m interval (Simplified for CLI: checks every 60s)
-                time.sleep(60)
+                # Update the UI and keep clock ticking every second during the 60s polling interval
+                for _ in range(60):
+                    live.update(generate_dashboard(current_price, equity, raw_bias, safe_kelly * 100, log_text))
+                    time.sleep(1)
 
             except KeyboardInterrupt:
                 break

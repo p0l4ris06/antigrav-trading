@@ -55,8 +55,8 @@ class AlpacaQuantBridge:
         alpaca_symbol = symbol.replace("USDT", "USD")
         buying_power, _ = self.get_account_metrics()
 
-        # Calculate exactly how many dollars to risk
-        notional_size = buying_power * kelly_fraction
+        # Calculate exactly how many dollars to risk (Alpaca requires max 2 decimal places)
+        notional_size = float(f"{float(buying_power * kelly_fraction):.2f}")
 
         # If Kelly is 0, or size is too small (< $2), do nothing
         if notional_size < 2.0:
