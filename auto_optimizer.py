@@ -81,7 +81,7 @@ class OptimizerConfig:
     train_command: list[str] = field(default_factory=lambda: [
         "python", "train.py",
         "--data", "data/BTC_USDT_15m.parquet", "data/ETH_USDT_15m.parquet", "data/SOL_USDT_15m.parquet",
-        "--timesteps", "50000",
+        "--timesteps", "250000",
     ])
 
     # Loop control
@@ -287,10 +287,14 @@ class BackupManager:
 # ─────────────────────────────────────────────
 
 def run_evaluation(cfg: OptimizerConfig, log: logging.Logger) -> float:
-    log.info("Running walk-forward evaluation: %s", " ".join(cfg.train_command))
+    cmd = list(cfg.train_command)
+    if cmd and cmd[0] == "python":
+        import sys
+        cmd[0] = sys.executable
+    log.info("Running walk-forward evaluation: %s", " ".join(cmd))
     try:
         result = subprocess.run(
-            cfg.train_command,
+            cmd,
             capture_output=True,
             text=True,
             timeout=cfg.timeout_seconds,
@@ -369,10 +373,16 @@ Rules:
 1. Return EXACTLY {len(cfg.target_files)} Python code block(s) in order: {target_list}.
 2. Wrap each in ```python ... ``` fences.
 3. Use Polars (SIMD-accelerated) for all feature engineering. No pandas in features.py.
-4. Do not introduce look-ahead bias.
+4. Do not introduce look-ahead bias. NEVER use center=True in rolling operations. NEVER shift with negative indexes like shift(-k). All features must be strictly trailing or historical.
 5. Keep mathematical edge simple and robust.
 6. Do not change the FITNESS_SCORE printing format in train.py.
 7. If you cannot improve, return the files unchanged rather than breaking them.
+
+POLARS SYNTAX SECURE CODING CHEATSHEET:
+- NEVER write `.fill_null(None)` or `.fill_null()`. In Polars, `fill_null` requires a value or a strategy, e.g. `.fill_null(0.0)` or `.fill_null(strategy="forward")`.
+- To replace NaNs, use `.fill_nan(0.0)` or `.fill_nan(None)`.
+- Avoid using `.forward_fill()` directly without arguments. Use `.forward_fill()` or `.fill_null(strategy="forward")`.
+- When shifting columns, only shift with positive integers, e.g. `.shift(1)` or `.shift(5)`. Never shift with a negative integer.
 """
     # Inject handover doc if available
     hdoc = Path(cfg.handover_doc)
@@ -472,6 +482,14 @@ def apply_mutation(
         return False
 
     for path, code in zip(target_files, blocks):
+        # Scan for forbidden look-ahead keywords (e.g., center=True, shift(-k))
+        if re.search(r"center\s*=\s*True", code, re.IGNORECASE):
+            log.error("MUTATION REJECTED: Forbidden look-ahead parameter 'center=True' detected in proposed changes for %s.", path)
+            return False
+        if re.search(r"shift\s*\(\s*-", code):
+            log.error("MUTATION REJECTED: Forbidden future look-ahead 'shift(-k)' detected in proposed changes for %s.", path)
+            return False
+
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         Path(path).write_text(code)
         log.debug("Wrote %d chars -> %s", len(code), path)
@@ -544,9 +562,16 @@ def main():
             sys.stderr.reconfigure(encoding="utf-8")
         except Exception:
             pass
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
     cfg = OptimizerConfig()
     cfg = config_from_env(cfg)
     cfg, resume, skip_quality = parse_args(cfg)
+    if cfg.provider == "azure" and cfg.model == "deepseek-coder-v2":
+        cfg.model = "gpt-5.4-mini"
 
     log = setup_logging(cfg.log_dir)
     history = History(cfg.history_dir, cfg.history_file)

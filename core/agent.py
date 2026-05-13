@@ -52,6 +52,9 @@ class KellyConvexEnv(gym.Env):
         if bull_bos > 0.5 and bias < 0:
             reward -= 0.01 # Mild structural penalty
             
+        # FINAL CAP: Prevent numeric instability from reaching the optimizer
+        reward = float(np.clip(reward, -10.0, 10.0))
+            
         done = (
             self.current_step >= len(self.data) - 1 or 
             self.portfolio_value < 0.1 or 
