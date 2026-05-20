@@ -24,7 +24,7 @@ app = typer.Typer()
 console = Console()
 
 
-def generate_dashboard(price: float, equity: float, bias: float, kelly: float, log_msg: str) -> Layout:
+def generate_dashboard(price: float, equity: float, bias: float, kelly: float, action_text: str, log_msg: str) -> Layout:
     """Builds the Bloomberg-style terminal grid."""
     layout = Layout()
     layout.split_column(
@@ -56,7 +56,7 @@ def generate_dashboard(price: float, equity: float, bias: float, kelly: float, l
     brain_table.add_column("Value", justify="right", style=color)
     brain_table.add_row("Directional Bias", f"{bias:+.4f}")
     brain_table.add_row("Kelly Allocation", f"{kelly:.2f}%")
-    brain_table.add_row("Action", "RISK ON" if kelly > 0 else "CASH (SAFE)")
+    brain_table.add_row("Action", action_text)
     layout["agent_brain"].update(Panel(brain_table, title="[bold magenta]PPO Agent Telemetry"))
 
     # Logs
@@ -106,26 +106,34 @@ def live_trade(symbol: str = "BTC/USDT", paper: bool = True):
                 # C. Agent Inference (The RL 'Brain')
                 action, _ = model.predict(latest_obs, deterministic=True)
 
-                # Unpack action: [Bias (-1 to 1), Kelly (0 to 1)]
-                raw_bias = action[0]
-                kelly_raw = ((action[1] + 1) / 2)  # Scale from [-1, 1] to [0, 1]
+                # Assuming your model outputs 2 continuous values: [Bias, Kelly]
+                raw_bias = float(action[0])
+                # Scale Kelly from [-1, 1] to [0, 1]
+                kelly_raw = float(((action[1] + 1) / 2)) if len(action) > 1 else abs(raw_bias)
 
-                # D. Risk Manager Gate
-                safe_kelly = kelly_raw if kelly_raw > 0.05 else 0.0
+                # D. Strict Long-Only Risk Manager
+                # If bias is negative (Short), force Kelly to 0 (Cash)
+                if raw_bias <= 0:
+                    safe_kelly = 0.0
+                    action_text = "CASH (BEARISH BIAS)"
+                else:
+                    # If Long, require at least 20% confidence to beat the spread
+                    safe_kelly = kelly_raw if kelly_raw > 0.20 else 0.0
+                    action_text = "BUY (LONG)" if safe_kelly > 0 else "CASH (LOW CONFIDENCE)"
 
                 # E. Execution
                 log_text = bridge.execute_kelly_trade(symbol, raw_bias, safe_kelly)
 
                 # Update the UI and keep clock ticking every second during the 60s polling interval
                 for _ in range(60):
-                    live.update(generate_dashboard(current_price, equity, raw_bias, safe_kelly * 100, log_text))
+                    live.update(generate_dashboard(current_price, equity, raw_bias, safe_kelly * 100, action_text, log_text))
                     time.sleep(1)
 
             except KeyboardInterrupt:
                 break
             except Exception as e:
                 log_text = f"[red]ERROR: {str(e)}[/red]"
-                live.update(generate_dashboard(0, 0, 0, 0, log_text))
+                live.update(generate_dashboard(0, 0, 0, 0, "ERROR", log_text))
                 time.sleep(10)
 
 

@@ -46,33 +46,48 @@ class AlpacaQuantBridge:
         return df
 
     def get_account_metrics(self):
-        """Returns live buying power and equity."""
+        """Returns live cash (buying power for crypto) and equity."""
         account = self.trade_client.get_account()
-        return float(account.buying_power), float(account.equity)
+        return float(account.cash), float(account.equity)
 
     def execute_kelly_trade(self, symbol: str, bias: float, kelly_fraction: float):
-        """Executes a live fractional order based on the agent's Kelly output."""
         alpaca_symbol = symbol.replace("USDT", "USD")
-        buying_power, _ = self.get_account_metrics()
 
-        # Calculate exactly how many dollars to risk (Alpaca requires max 2 decimal places)
-        notional_size = float(f"{float(buying_power * kelly_fraction):.2f}")
+        # 1. Check current positions
+        try:
+            position = self.trade_client.get_open_position(alpaca_symbol)
+            current_qty = float(position.qty)
+        except Exception:
+            current_qty = 0.0
 
-        # If Kelly is 0, or size is too small (< $2), do nothing
-        if notional_size < 2.0:
-            return "No Trade - Kelly below execution threshold."
+        buying_power, equity = self.get_account_metrics()
+        # Cap order size to actual available cash balance to prevent 403 insufficient funds
+        max_possible = min(equity * kelly_fraction, buying_power)
+        target_notional = float(f"{float(max_possible):.2f}")
 
-        side = OrderSide.BUY if bias > 0 else OrderSide.SELL
+        # If Kelly is 0 (Agent wants cash)
+        if kelly_fraction == 0.0:
+            if current_qty > 0:
+                # Close the long position
+                self.trade_client.close_position(alpaca_symbol)
+                return f"CLOSED LONG POSITION - Returning to Cash."
+            return "Holding Cash."
 
-        # Note: Shorting crypto is restricted on Alpaca depending on jurisdiction.
-        # If side == SELL, you usually just close your long position.
+        # If Kelly > 0 (Agent wants to be Long)
+        # Note: We only allow Longs now based on the terminal.py logic
+        if target_notional < 2.0:
+            return f"No Trade - Available USD Balance (${buying_power:.2f}) below $2.00 threshold."
 
-        order_data = MarketOrderRequest(
-            symbol=alpaca_symbol,
-            notional=notional_size,
-            side=side,
-            time_in_force=TimeInForce.IOC
-        )
+        # Simplistic Execution: For now, just buy the target notional.
+        # (A real system would calculate the delta between current position and target)
+        if current_qty == 0:
+            order_data = MarketOrderRequest(
+                symbol=alpaca_symbol,
+                notional=target_notional,
+                side=OrderSide.BUY,
+                time_in_force=TimeInForce.IOC
+            )
+            self.trade_client.submit_order(order_data=order_data)
+            return f"EXECUTED: BUY ${target_notional:.2f} of {alpaca_symbol}"
 
-        order = self.trade_client.submit_order(order_data=order_data)
-        return f"EXECUTED: {side.name} ${notional_size:.2f} of {alpaca_symbol}"
+        return f"Holding current LONG position."
