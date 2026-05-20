@@ -81,12 +81,19 @@ class KellyConvexEnv(gym.Env):
             return np.zeros(self.target_dim, dtype=np.float32), 4400.00, 15.0
             
         obs = self.data[self.current_step]
-        current_price = float(obs[3]) if len(obs) > 3 and obs[3] > 0 else 4400.00
-        atr = float(obs[6]) if len(obs) > 6 and obs[6] > 0 else 15.0
         self.current_step += 1
-        return obs, current_price, atr
+        return obs, 4400.00, 15.0
 
 def init_agent():
     env = KellyConvexEnv(data_stream=np.zeros((1000, 15)))
-    model = PPO("MlpPolicy", env, clip_range=0.2, ent_coef=0.01, learning_rate=3e-4)
+    model = PPO(
+        "MlpPolicy",
+        env,
+        clip_range=0.2,
+        ent_coef=0.01,
+        learning_rate=3e-4,
+        n_steps=1024,
+        batch_size=128,
+        n_epochs=4,
+    )
     return model, env
