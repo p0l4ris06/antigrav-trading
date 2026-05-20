@@ -81,7 +81,7 @@ class OptimizerConfig:
     train_command: list[str] = field(default_factory=lambda: [
         "python", "train.py",
         "--data", "data/BTC_USDT_15m.parquet", "data/ETH_USDT_15m.parquet", "data/SOL_USDT_15m.parquet",
-        "--timesteps", "250000",
+        "--timesteps", "100000",
     ])
 
     # Loop control
@@ -539,6 +539,8 @@ def parse_args(cfg: OptimizerConfig) -> OptimizerConfig:
                    help="Load best score from history.jsonl and continue")
     p.add_argument("--no-quality-gate", action="store_true",
                    help="Skip data quality check (not recommended)")
+    p.add_argument("--timesteps", type=int, default=None,
+                   help="Override the training timesteps (e.g. 100000)")
     args = p.parse_args()
 
     cfg.provider = args.provider
@@ -548,6 +550,16 @@ def parse_args(cfg: OptimizerConfig) -> OptimizerConfig:
     cfg.timeout_seconds = args.timeout
     cfg.temperature = args.temperature
     cfg.max_tokens = args.max_tokens
+
+    if args.timesteps is not None:
+        cmd = list(cfg.train_command)
+        try:
+            ts_idx = cmd.index("--timesteps")
+            cmd[ts_idx + 1] = str(args.timesteps)
+        except ValueError:
+            cmd.extend(["--timesteps", str(args.timesteps)])
+        cfg.train_command = cmd
+
     return cfg, args.resume, args.no_quality_gate
 
 
