@@ -462,10 +462,11 @@ async def inference_cycle(
         log.warning("Insufficient feature data - skipping cycle.")
         return
 
-    # Extract numeric columns exactly like train.py
+    # Extract numeric columns exactly like train.py, excluding non-stationary columns
+    exclude_cols = {"open", "high", "low", "close", "volume", "true_range"}
     numeric_cols = [
         c for c, t in feature_df.schema.items()
-        if t in [pl.Float32, pl.Float64, pl.Int32, pl.Int64]
+        if t in [pl.Float32, pl.Float64, pl.Int32, pl.Int64] and c not in exclude_cols
     ]
 
     # 3. Validate feature shape against model (once per session)

@@ -98,13 +98,13 @@ def test_env_dimensions_and_step():
     """Verify that KellyConvexEnv matches target dimensions and steps correctly."""
     # Generate mock features matching the pipeline format
     np.random.seed(42)
-    data = np.random.normal(0, 1.0, (100, 15)).astype(np.float32)
+    data = np.random.normal(0, 1.0, (100, 9)).astype(np.float32)
     
     # Initialize environment
-    env = KellyConvexEnv(data_stream=data, max_leverage=3.0)
+    env = KellyConvexEnv(data_stream=data, max_leverage=3.0, target_dim=9)
     
     obs, info = env.reset()
-    assert obs.shape == (15,)
+    assert obs.shape == (9,)
     assert isinstance(info, dict)
     
     # Take a step with a valid action: [bias, kelly_allocation]
@@ -112,7 +112,7 @@ def test_env_dimensions_and_step():
     action = np.array([0.5, 0.1], dtype=np.float32)
     obs, reward, done, truncated, info = env.step(action)
     
-    assert obs.shape == (15,)
+    assert obs.shape == (9,)
     assert isinstance(reward, float)
     assert isinstance(done, bool)
     assert "portfolio_value" in info
@@ -120,7 +120,7 @@ def test_env_dimensions_and_step():
 
 def test_agent_initialization():
     """Verify that init_agent returns working PPO model and env."""
-    model, env = init_agent()
+    model, env = init_agent(target_dim=9)
     assert model is not None
     assert env is not None
-    assert env.observation_space.shape == (15,)
+    assert env.observation_space.shape == (9,)

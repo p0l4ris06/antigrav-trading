@@ -4,7 +4,7 @@ from gymnasium import spaces
 from stable_baselines3 import PPO
 
 class KellyConvexEnv(gym.Env):
-    def __init__(self, data_stream, max_leverage=3.0, max_episode_steps=1000, target_dim=15):
+    def __init__(self, data_stream, max_leverage=3.0, max_episode_steps=1000, target_dim=9):
         super().__init__()
         self.data = data_stream
         self.max_leverage = max_leverage
@@ -25,9 +25,12 @@ class KellyConvexEnv(gym.Env):
         bias = np.sign(action[0])
         fraction_to_risk = action[1] * self.max_leverage 
         
-        # Use actual market return from log_return column (index 5) of the active candle
-        # Scale by fractional Kelly risk coefficient (0.05) to ensure safety
-        real_asset_return = float(obs[5]) if len(obs) > 5 else 0.0
+        # Use actual market return from log_return column of the active candle
+        # Index 0 corresponds to log_return when raw prices are excluded (target_dim == 9)
+        if self.target_dim == 9:
+            real_asset_return = float(obs[0]) if len(obs) > 0 else 0.0
+        else:
+            real_asset_return = float(obs[5]) if len(obs) > 5 else 0.0
         portfolio_return = fraction_to_risk * bias * real_asset_return * 0.05
         
         self.portfolio_value *= (1 + portfolio_return)
@@ -84,8 +87,8 @@ class KellyConvexEnv(gym.Env):
         self.current_step += 1
         return obs, 4400.00, 15.0
 
-def init_agent():
-    env = KellyConvexEnv(data_stream=np.zeros((1000, 15)))
+def init_agent(target_dim=9):
+    env = KellyConvexEnv(data_stream=np.zeros((1000, target_dim)), target_dim=target_dim)
     model = PPO(
         "MlpPolicy",
         env,

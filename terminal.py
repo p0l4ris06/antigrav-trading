@@ -91,20 +91,37 @@ def live_trade(symbol: str = "BTC/USDT", paper: bool = True):
 
                 # B. Compute Features (The RL 'Eyes')
                 features_df = factory.compute_features(df)
-                numeric_cols = [c for c, t in features_df.schema.items() if t in [pl.Float32, pl.Float64, pl.Int32, pl.Int64]]
+                exclude_cols = {"open", "high", "low", "close", "volume", "true_range"}
+                numeric_cols = [c for c, t in features_df.schema.items() if t in [pl.Float32, pl.Float64, pl.Int32, pl.Int64] and c not in exclude_cols]
                 obs_np = features_df.select(numeric_cols).tail(1).to_numpy().astype(np.float32)[0]
 
-                # Align to 15 dimensions (Padding/Truncation) matching train.py
-                if len(obs_np) < 15:
-                    obs_np = np.pad(obs_np, (0, 15 - len(obs_np)), 'constant')
-                elif len(obs_np) > 15:
-                    obs_np = obs_np[:15]
+                # Align to 9 dimensions (Padding/Truncation) matching train.py
+                if len(obs_np) < 9:
+                    obs_np = np.pad(obs_np, (0, 9 - len(obs_np)), 'constant')
+                elif len(obs_np) > 9:
+                    obs_np = obs_np[:9]
 
                 obs_np = np.nan_to_num(obs_np, nan=0.0, posinf=0.0, neginf=0.0)
                 latest_obs = np.clip(obs_np, -1e3, 1e3)
 
                 # C. Agent Inference (The RL 'Brain')
-                action, _ = model.predict(latest_obs, deterministic=True)
+                vec_normalize_path = "models/vec_normalize.pkl"
+                if os.path.exists(vec_normalize_path):
+                    import pickle
+                    try:
+                        with open(vec_normalize_path, "rb") as f:
+                            vec_norm = pickle.load(f)
+                        vec_norm.training = False
+                        vec_norm.norm_reward = False
+                        
+                        obs_batched = np.expand_dims(latest_obs, axis=0)
+                        obs_normalized = vec_norm.normalize_obs(obs_batched)
+                        action, _ = model.predict(obs_normalized, deterministic=True)
+                        action = action[0]
+                    except Exception as e:
+                        action, _ = model.predict(latest_obs, deterministic=True)
+                else:
+                    action, _ = model.predict(latest_obs, deterministic=True)
 
                 # Assuming your model outputs 2 continuous values: [Bias, Kelly]
                 raw_bias = float(action[0])
