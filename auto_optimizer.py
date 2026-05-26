@@ -414,7 +414,7 @@ def get_mutation(
     if not canonical_cols:
         canonical_cols = re.findall(r'"(\w+)"', file_contents.get("core/features.py", ""))
 
-    RESERVED = {"timestamp", "open", "high", "low", "close", "volume"}
+    RESERVED = {"timestamp", "open", "high", "low", "close", "volume", "true_range"}
     canonical_cols = [c for c in canonical_cols if c not in RESERVED][:n_features]
     col_list = "\n".join(f"  {i+1}. {c}" for i, c in enumerate(canonical_cols))
 
@@ -605,7 +605,16 @@ def main():
         sys.exit(1)
 
     # Read feature count from existing model observation space
-    n_features = 15  # update this if you retrain from scratch with a different count
+    n_features = 9
+    try:
+        from stable_baselines3 import PPO
+        model_path = "models/ppo_antigrav_latest.zip"
+        if os.path.exists(model_path):
+            temp_model = PPO.load(model_path, device='cpu')
+            n_features = temp_model.observation_space.shape[0]
+            log.info("Detected target_dim = %d from existing model", n_features)
+    except Exception as e:
+        log.warning("Could not read feature count from existing model: %s. Using default 9.", e)
 
     # Build LLM client
     client, client_type = build_client(cfg, log)
