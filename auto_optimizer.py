@@ -78,9 +78,11 @@ class OptimizerConfig:
     ])
 
     # Training command — must print FITNESS_SCORE: <float> to stdout
+    # Phase 1 pivot: 4H candles.  Revert to 15m by swapping the --data paths below.
+    # 15m: "data/BTC_USDT_15m.parquet", "data/ETH_USDT_15m.parquet", "data/SOL_USDT_15m.parquet"
     train_command: list[str] = field(default_factory=lambda: [
         "python", "train.py",
-        "--data", "data/BTC_USDT_15m.parquet", "data/ETH_USDT_15m.parquet", "data/SOL_USDT_15m.parquet",
+        "--data", "data/BTC_USDT_4h.parquet", "data/ETH_USDT_4h.parquet", "data/SOL_USDT_4h.parquet",
         "--timesteps", "100000",
         "--spread-pct", "0.0020",   # 0.20% one-way fee — Alpaca crypto taker rate
     ])

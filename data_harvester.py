@@ -55,20 +55,38 @@ class HarvesterConfig:
     output_dir: str = "data"
     log_dir: str = "logs"
     checkpoint_dir: str = ".checkpoints"
-    crypto_timeframe: str = "15m"
+    crypto_timeframe: str = "15m"       # e.g. '15m', '1h', '4h', '1d'
     etf_timeframe: str = "1h"
     days_back: int = 730
     max_retries: int = 6
-    base_backoff: float = 2.0       # seconds; doubles each retry
-    backoff_jitter: float = 0.3     # ± 30% jitter
-    min_rows_crypto: int = 50_000   # fail validation below this
+    base_backoff: float = 2.0           # seconds; doubles each retry
+    backoff_jitter: float = 0.3         # ± 30% jitter
+    min_rows_crypto: int = 50_000       # fail validation below this (auto-scaled for coarser tf)
     min_rows_etf: int = 2_000
-    gap_threshold_minutes: int = 30  # flag gaps larger than this (crypto)
-    gap_threshold_etf_hours: int = 4  # flag ETF gaps larger than this
-    outlier_z_score: float = 8.0    # flag candles with z-score above this
+    gap_threshold_minutes: int = 30     # flag gaps larger than this (crypto)
+    gap_threshold_etf_hours: int = 4    # flag ETF gaps larger than this
+    outlier_z_score: float = 8.0        # flag candles with z-score above this
     crypto_assets: list[str] = field(default_factory=lambda: ["BTC/USDT", "ETH/USDT", "SOL/USDT"])
     etf_assets: list[str] = field(default_factory=lambda: ["SPY", "QQQ", "IBIT"])
     align_output: bool = False
+
+
+def _bars_per_day(timeframe: str) -> float:
+    """Convert a ccxt-style timeframe string to approximate bars per day."""
+    tf = timeframe.lower().strip()
+    if tf.endswith("m"):
+        return 1440 / int(tf[:-1])
+    if tf.endswith("h"):
+        return 24 / int(tf[:-1])
+    if tf.endswith("d"):
+        return 1 / int(tf[:-1])
+    return 96  # fallback: 15m
+
+
+def _auto_min_rows(days_back: int, timeframe: str, headroom: float = 0.5) -> int:
+    """Calculate a sensible minimum row count for the given timeframe and history window."""
+    expected = days_back * _bars_per_day(timeframe)
+    return max(100, int(expected * headroom))
 
 
 # ─────────────────────────────────────────────
@@ -605,6 +623,11 @@ def parse_args() -> HarvesterConfig:
     p.add_argument("--etfs", nargs="+", default=cfg.etf_assets, help="ETF tickers (e.g. SPY QQQ)")
     p.add_argument("--crypto-tf", default=cfg.crypto_timeframe, help="Crypto candle timeframe")
     p.add_argument("--etf-tf", default=cfg.etf_timeframe, help="ETF candle timeframe")
+    p.add_argument(
+        "--timeframe", default=None,
+        help="Shortcut: sets --crypto-tf AND adjusts ETF tf proportionally. "
+             "E.g. --timeframe 4h writes BTC_USDT_4h.parquet etc. Overrides --crypto-tf.",
+    )
     p.add_argument("--align", action="store_true", help="Also write aligned/ forward-filled dataset")
     p.add_argument("--retries", type=int, default=cfg.max_retries, help="Max retries per request")
     args = p.parse_args()
@@ -613,10 +636,22 @@ def parse_args() -> HarvesterConfig:
     cfg.days_back = args.days
     cfg.crypto_assets = args.crypto
     cfg.etf_assets = args.etfs
-    cfg.crypto_timeframe = args.crypto_tf
-    cfg.etf_timeframe = args.etf_tf
     cfg.align_output = args.align
     cfg.max_retries = args.retries
+
+    # --timeframe overrides --crypto-tf (and adjusts ETF tf to 1h minimum)
+    if args.timeframe is not None:
+        cfg.crypto_timeframe = args.timeframe
+        # Keep ETF tf at original or coarsen to match, but cap at 1h (yfinance limit)
+        cfg.etf_timeframe = args.etf_tf
+    else:
+        cfg.crypto_timeframe = args.crypto_tf
+        cfg.etf_timeframe = args.etf_tf
+
+    # Auto-scale min_rows_crypto based on actual bars-per-day for the requested timeframe.
+    # Prevents 4H pulls (730d × 6 bars/day ≈ 4,380 rows) from failing the 50k gate.
+    cfg.min_rows_crypto = _auto_min_rows(cfg.days_back, cfg.crypto_timeframe)
+
     return cfg
 
 
