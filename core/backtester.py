@@ -19,8 +19,12 @@ class AntigravBacktester:
         
     def load_model(self):
         if os.path.exists(self.model_path):
-            self.model = PPO.load(self.model_path, device='cpu')
-            print(f"Loaded model from {self.model_path} (Forced CPU)")
+            from core.agent import load_agent_model
+            try:
+                self.model = load_agent_model(self.model_path, device='cpu')
+                print(f"Loaded model from {self.model_path} (Forced CPU, Class: {self.model.__class__.__name__})")
+            except Exception as e:
+                print(f"Failed to load model: {e}")
         else:
             print(f"Model not found at {self.model_path}")
             
@@ -97,9 +101,18 @@ class AntigravBacktester:
                 return np.expand_dims(action, axis=0)
             return action
 
+        lstm_states = None
+        num_envs = 1
+        episode_starts = np.ones((num_envs,), dtype=bool)
+
         while not done:
             if self.model:
-                action, _ = self.model.predict(obs, deterministic=True)
+                action, lstm_states = self.model.predict(
+                    obs,
+                    state=lstm_states,
+                    episode_start=episode_starts,
+                    deterministic=True
+                )
                 action = adapt_action(action, use_vec_env=(vec_norm is not None))
             else:
                 action = env.action_space.sample()
@@ -109,9 +122,11 @@ class AntigravBacktester:
                 obs, reward, dones, infos = vec_norm.step(action)
                 done = dones[0]
                 info = infos[0]
+                episode_starts = dones
             else:
                 obs, reward, done, truncated, info = env.step(action)
                 done = done or truncated
+                episode_starts = np.array([done])
                 
             equity_curve.append(info["portfolio_value"])
             actions.append(action)

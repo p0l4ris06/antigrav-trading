@@ -56,7 +56,7 @@ import polars as pl
 from stable_baselines3 import PPO
 
 from core.features import SMCFeatureFactory
-from core.gateway import OmniGateway
+from core.exchange_adapter import OmniGateway
 
 
 # ─────────────────────────────────────────────

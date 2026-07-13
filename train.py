@@ -43,22 +43,28 @@ def evaluate(model, env):
     
     if is_vec:
         obs = env.reset()
+        num_envs = env.num_envs
     else:
         obs, _ = env.reset()
+        num_envs = 1
         
     done = False
     portfolio_value = 1.0
+    lstm_states = None
+    episode_starts = np.ones((num_envs,), dtype=bool)
     
     while not done:
-        action, _ = model.predict(obs, deterministic=True)
+        action, lstm_states = model.predict(obs, state=lstm_states, episode_start=episode_starts, deterministic=True)
         if is_vec:
             obs, reward, dones, infos = env.step(action)
             done = dones[0]
             portfolio_value = infos[0].get("portfolio_value", portfolio_value)
+            episode_starts = dones
         else:
             obs, reward, terminated, truncated, info = env.step(action)
             done = terminated or truncated
             portfolio_value = info.get("portfolio_value", portfolio_value)
+            episode_starts = np.array([done])
             
     return portfolio_value
 
@@ -67,6 +73,10 @@ def main():
     parser = argparse.ArgumentParser(description="Antigravity Training Pipeline")
     parser.add_argument("--data", type=str, nargs="+", default=["data/BTC_USDT_15m.parquet"], help="Path to data file(s) or directories")
     parser.add_argument("--timesteps", type=int, default=10000, help="Number of training timesteps")
+    parser.add_argument("--agent-type", type=str, default="ppo", choices=["ppo", "sac", "recurrent_ppo"], help="RL agent algorithm type")
+    parser.add_argument("--net-arch", type=int, nargs="+", default=None, help="Custom neural network architecture hidden layer widths (e.g. 128 128 64)")
+    parser.add_argument("--sharpe-lambda", type=float, default=0.0, help="Sharpe return variance penalty scaling")
+    parser.add_argument("--drawdown-lambda", type=float, default=0.0, help="Equity drawdown penalty scaling")
     args = parser.parse_args()
 
     # 1. Load Data — supports multiple files/directories of parquets
@@ -139,16 +149,43 @@ def main():
     # 4. Agent Training
     from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
-    train_vec_env = DummyVecEnv([lambda: KellyConvexEnv(data_stream=train_data, max_leverage=3.0, target_dim=9)])
+    policy_kwargs = None
+    if args.net_arch:
+        # SAC policies net_arch can be a list or a dict(qf=[...], pi=[...])
+        if args.agent_type.lower() == "sac":
+            policy_kwargs = dict(net_arch=dict(qf=args.net_arch, pi=args.net_arch))
+        else:
+            policy_kwargs = dict(net_arch=dict(pi=args.net_arch, vf=args.net_arch))
+
+    train_env_fn = lambda: KellyConvexEnv(
+        data_stream=train_data,
+        max_leverage=3.0,
+        target_dim=9,
+        sharpe_lambda=args.sharpe_lambda,
+        drawdown_lambda=args.drawdown_lambda
+    )
+    train_vec_env = DummyVecEnv([train_env_fn])
     train_vec_env = VecNormalize(train_vec_env, norm_obs=True, norm_reward=False, clip_obs=10.0)
 
-    model, _ = init_agent(target_dim=9)
-    # Re-bind environment to train_vec_env
-    model.set_env(train_vec_env)
+    model, _ = init_agent(
+        target_dim=9,
+        agent_type=args.agent_type,
+        policy_kwargs=policy_kwargs,
+        env=train_vec_env,
+        learning_rate=3e-4
+    )
     model.learn(total_timesteps=args.timesteps)
 
     # 4. Walk-Forward Evaluation (Out-Of-Sample)
-    test_vec_env = DummyVecEnv([lambda: KellyConvexEnv(data_stream=test_data, max_leverage=3.0, max_episode_steps=len(test_data), target_dim=9)])
+    test_env_fn = lambda: KellyConvexEnv(
+        data_stream=test_data,
+        max_leverage=3.0,
+        max_episode_steps=len(test_data),
+        target_dim=9,
+        sharpe_lambda=args.sharpe_lambda,
+        drawdown_lambda=args.drawdown_lambda
+    )
+    test_vec_env = DummyVecEnv([test_env_fn])
     test_vec_env = VecNormalize(test_vec_env, norm_obs=True, norm_reward=False, clip_obs=10.0)
     # Sync normalization stats from training
     from copy import deepcopy

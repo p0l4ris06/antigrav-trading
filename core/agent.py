@@ -1,10 +1,10 @@
 import gymnasium as gym
 import numpy as np
+import os
 from gymnasium import spaces
-from stable_baselines3 import PPO
 
 class KellyConvexEnv(gym.Env):
-    def __init__(self, data_stream, max_leverage=3.0, max_episode_steps=1000, target_dim=9):
+    def __init__(self, data_stream, max_leverage=3.0, max_episode_steps=1000, target_dim=9, sharpe_lambda=0.0, drawdown_lambda=0.0):
         super().__init__()
         self.data = data_stream
         self.max_leverage = max_leverage
@@ -12,6 +12,12 @@ class KellyConvexEnv(gym.Env):
         self.current_step = 0
         self.episode_steps = 0
         self.target_dim = target_dim
+        
+        # Risk penalty parameters
+        self.sharpe_lambda = sharpe_lambda
+        self.drawdown_lambda = drawdown_lambda
+        self.returns_window = []
+        self.peak_portfolio_value = 1.0
         
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(self.target_dim,), dtype=np.float32)
         self.action_space = spaces.Box(low=np.array([-1.0, 0.0]), high=np.array([1.0, 1.0]), dtype=np.float32)
@@ -55,6 +61,24 @@ class KellyConvexEnv(gym.Env):
         if bull_bos > 0.5 and bias < 0:
             reward -= 0.01 # Mild structural penalty
             
+        # Sharpe (return variance) penalty
+        self.returns_window.append(portfolio_return)
+        if len(self.returns_window) > 100:
+            self.returns_window.pop(0)
+            
+        if self.sharpe_lambda > 0.0 and len(self.returns_window) > 10:
+            returns_std = float(np.std(self.returns_window))
+            reward -= self.sharpe_lambda * returns_std
+            
+        # Drawdown penalty
+        if self.portfolio_value > self.peak_portfolio_value:
+            self.peak_portfolio_value = self.portfolio_value
+            
+        if self.drawdown_lambda > 0.0:
+            drawdown = (self.peak_portfolio_value - self.portfolio_value) / self.peak_portfolio_value
+            if drawdown > 0:
+                reward -= self.drawdown_lambda * drawdown
+            
         # FINAL CAP: Prevent numeric instability from reaching the optimizer
         reward = float(np.clip(reward, -10.0, 10.0))
             
@@ -68,6 +92,8 @@ class KellyConvexEnv(gym.Env):
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         self.episode_steps = 0
+        self.returns_window = []
+        self.peak_portfolio_value = 1.0
         
         # Randomize starting index during training to cover the entire dataset
         if self.max_episode_steps < len(self.data):
@@ -87,16 +113,89 @@ class KellyConvexEnv(gym.Env):
         self.current_step += 1
         return obs, 4400.00, 15.0
 
-def init_agent(target_dim=9):
-    env = KellyConvexEnv(data_stream=np.zeros((1000, target_dim)), target_dim=target_dim)
-    model = PPO(
-        "MlpPolicy",
-        env,
-        clip_range=0.2,
-        ent_coef=0.01,
-        learning_rate=3e-4,
-        n_steps=1024,
-        batch_size=128,
-        n_epochs=4,
-    )
+def init_agent(target_dim=9, agent_type="ppo", policy_kwargs=None, env=None, data_stream=None, learning_rate=3e-4):
+    if env is None:
+        if data_stream is None:
+            data_stream = np.zeros((1000, target_dim))
+        env = KellyConvexEnv(data_stream=data_stream, target_dim=target_dim)
+        
+    if policy_kwargs is None:
+        policy_kwargs = {}
+        
+    if agent_type.lower() == "ppo":
+        from stable_baselines3 import PPO
+        model = PPO(
+            "MlpPolicy",
+            env,
+            clip_range=0.2,
+            ent_coef=0.01,
+            learning_rate=learning_rate,
+            n_steps=1024,
+            batch_size=128,
+            n_epochs=4,
+            policy_kwargs=policy_kwargs,
+            verbose=0,
+            device="cpu"
+        )
+    elif agent_type.lower() == "sac":
+        from stable_baselines3 import SAC
+        model = SAC(
+            "MlpPolicy",
+            env,
+            learning_rate=learning_rate,
+            buffer_size=10000,
+            learning_starts=100,
+            batch_size=64,
+            tau=0.005,
+            gamma=0.99,
+            policy_kwargs=policy_kwargs,
+            verbose=0,
+            device="cpu"
+        )
+    elif agent_type.lower() == "recurrent_ppo":
+        from sb3_contrib import RecurrentPPO
+        model = RecurrentPPO(
+            "MlpLstmPolicy",
+            env,
+            clip_range=0.2,
+            ent_coef=0.01,
+            learning_rate=learning_rate,
+            n_steps=128,
+            batch_size=64,
+            n_epochs=4,
+            policy_kwargs=policy_kwargs,
+            verbose=0,
+            device="cpu"
+        )
+    else:
+        raise ValueError(f"Unknown agent_type: {agent_type}")
+        
     return model, env
+
+def load_agent_model(model_path, device="cpu"):
+    from stable_baselines3 import PPO, SAC
+    try:
+        from sb3_contrib import RecurrentPPO
+    except ImportError:
+        RecurrentPPO = None
+        
+    # Attempt PPO
+    try:
+        return PPO.load(model_path, device=device)
+    except Exception:
+        pass
+        
+    # Attempt SAC
+    try:
+        return SAC.load(model_path, device=device)
+    except Exception:
+        pass
+        
+    # Attempt RecurrentPPO
+    if RecurrentPPO is not None:
+        try:
+            return RecurrentPPO.load(model_path, device=device)
+        except Exception:
+            pass
+            
+    raise ValueError(f"Could not load model from {model_path} as PPO, SAC, or RecurrentPPO.")
