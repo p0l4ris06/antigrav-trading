@@ -15,6 +15,7 @@ import gymnasium as gym
 # Inject local core directory into path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from core.features import SMCFeatureFactory
+from core.features_extended import ExtendedFeatureFactory
 from core.agent import KellyConvexEnv, init_agent
 
 
@@ -80,6 +81,11 @@ def main():
     parser.add_argument("--spread-pct", type=float, default=0.0020,
                         help="One-way spread/fee cost as fraction of notional (default 0.0020 = 0.20%%).  "
                              "Set to 0.0 to reproduce old frictionless behaviour.")
+    parser.add_argument(
+        "--feature-set", type=str, default="base", choices=["base", "extended"],
+        help="Feature set to use: 'base' = SMCFeatureFactory (default, 9 features); "
+             "'extended' = ExtendedFeatureFactory (base + 4H macro + OBI placeholders).",
+    )
     args = parser.parse_args()
 
     # 1. Load Data — supports multiple files/directories of parquets
@@ -122,21 +128,25 @@ def main():
             df = generate_synthetic_data()
 
     # 2. Feature Engineering
-    factory = SMCFeatureFactory()
+    use_extended = getattr(args, "feature_set", "base") == "extended"
+    if use_extended:
+        factory = ExtendedFeatureFactory(use_extended=True)
+        print(f"Feature set: EXTENDED (4H macro + OBI placeholders)")
+    else:
+        factory = SMCFeatureFactory()
+        print(f"Feature set: BASE (SMC + RSI + Bollinger)")
     features_df = factory.compute_features(df)
 
     # Convert to numeric features array, excluding raw prices / non-stationary inputs
-    exclude_cols = {"open", "high", "low", "close", "volume", "true_range"}
+    exclude_cols = {"open", "high", "low", "close", "volume", "true_range",
+                    "timestamp", "is_swing_high", "is_swing_low"}
     numeric_cols = [c for c, t in features_df.schema.items() if t in [pl.Float32, pl.Float64, pl.Int32, pl.Int64] and c not in exclude_cols]
     features_np = features_df.select(numeric_cols).to_numpy().astype(np.float32)
 
-    # Dynamic padding/truncation to ensure compatibility with KellyConvexEnv shape=(9,)
-    target_dim = 9
-    if features_np.shape[1] < target_dim:
-        padding = np.zeros((features_np.shape[0], target_dim - features_np.shape[1]), dtype=np.float32)
-        features_np = np.hstack([features_np, padding])
-    elif features_np.shape[1] > target_dim:
-        features_np = features_np[:, :target_dim]
+    # Dynamic target_dim: derived from actual feature count, not hardcoded.
+    # This ensures KellyConvexEnv shape matches the selected feature set automatically.
+    target_dim = features_np.shape[1]
+    print(f"Feature columns ({target_dim}): {numeric_cols}")
 
     # Clean NaN/inf
     features_np = np.nan_to_num(features_np, nan=0.0, posinf=0.0, neginf=0.0)
@@ -163,7 +173,7 @@ def main():
     train_env_fn = lambda: KellyConvexEnv(
         data_stream=train_data,
         max_leverage=3.0,
-        target_dim=9,
+        target_dim=target_dim,
         sharpe_lambda=args.sharpe_lambda,
         drawdown_lambda=args.drawdown_lambda,
         spread_pct=args.spread_pct,
@@ -172,7 +182,7 @@ def main():
     train_vec_env = VecNormalize(train_vec_env, norm_obs=True, norm_reward=False, clip_obs=10.0)
 
     model, _ = init_agent(
-        target_dim=9,
+        target_dim=target_dim,
         agent_type=args.agent_type,
         policy_kwargs=policy_kwargs,
         env=train_vec_env,
@@ -185,7 +195,7 @@ def main():
         data_stream=test_data,
         max_leverage=3.0,
         max_episode_steps=len(test_data),
-        target_dim=9,
+        target_dim=target_dim,
         sharpe_lambda=args.sharpe_lambda,
         drawdown_lambda=args.drawdown_lambda,
         spread_pct=args.spread_pct,
