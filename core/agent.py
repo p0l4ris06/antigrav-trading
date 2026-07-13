@@ -8,11 +8,17 @@ class KellyConvexEnv(gym.Env):
         """
         spread_pct : float
             One-way transaction cost as a fraction of notional (default 0.20%).
-            Applied on every step where fraction_to_risk != 0 — i.e. the agent
-            pays to hold any non-zero position each bar. This makes the training
-            simulator more brutal than reality, forcing the agent to only trade
-            when expected log-return genuinely exceeds the spread + fee cost.
-            Alpaca taker fee ~0.15-0.25% per side → 0.0020 is a conservative mid.
+            Charged ONCE on position entry and ONCE on position exit — matching
+            Alpaca's taker-fee model.  NOT a per-bar holding tax.
+
+            Correct model:
+              - Cash → Long  : pay spread_pct (entry)
+              - Long  → Cash : pay spread_pct (exit)
+              - Round trip   : 2 × spread_pct total
+
+            A per-bar holding cost is NOT used because at 15m cadence it would
+            imply 96 × 0.20% = 19.2%/day in fees, which is fictitious and causes
+            immediate portfolio ruin rather than teaching the agent to be selective.
         """
         super().__init__()
         self.data = data_stream
@@ -25,9 +31,10 @@ class KellyConvexEnv(gym.Env):
         # Risk penalty parameters
         self.sharpe_lambda = sharpe_lambda
         self.drawdown_lambda = drawdown_lambda
-        self.spread_pct = spread_pct  # one-way cost fraction
+        self.spread_pct = spread_pct  # one-way cost fraction (charged on position change)
         self.returns_window = []
         self.peak_portfolio_value = 1.0
+        self._prev_bias = 0  # tracks previous step's bias to detect entry/exit transitions
         
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(self.target_dim,), dtype=np.float32)
         self.action_space = spaces.Box(low=np.array([-1.0, 0.0]), high=np.array([1.0, 1.0]), dtype=np.float32)
@@ -49,14 +56,26 @@ class KellyConvexEnv(gym.Env):
             real_asset_return = float(obs[5]) if len(obs) > 5 else 0.0
         portfolio_return = fraction_to_risk * bias * real_asset_return * 0.05
 
-        # ── Spread / Fee Penalty ──────────────────────────────────────────────
-        # Deduct one-way transaction cost proportional to position size on every
-        # bar where the agent holds any non-zero exposure.  This forces the PPO
-        # to only trade when E[log-return] > spread cost, eliminating the
-        # frictionless hallucination that caused live dry-run bleed.
-        if abs(fraction_to_risk) > 1e-6:
-            spread_cost = abs(fraction_to_risk) * self.spread_pct
-            portfolio_return -= spread_cost
+        # ── Spread / Fee Penalty (per-trade, not per-bar) ─────────────────────
+        # Pay spread_pct once on ENTRY (cash → position) and once on EXIT
+        # (position → cash or direction change).  This mirrors Alpaca's taker
+        # fee model: you pay when you transact, not every bar you hold.
+        #
+        # Transitions that incur a cost:
+        #   prev_bias == 0  and  bias != 0  →  entry into a position
+        #   prev_bias != 0  and  bias == 0  →  exit to cash
+        #   prev_bias != 0  and  bias != prev_bias  →  reversal (entry + exit)
+        if self.spread_pct > 0.0 and abs(fraction_to_risk) > 1e-6:
+            prev = self._prev_bias
+            entering = (prev == 0 and bias != 0)
+            exiting  = (prev != 0 and bias == 0)
+            reversing = (prev != 0 and bias != 0 and bias != prev)
+            if entering or exiting:
+                portfolio_return -= abs(fraction_to_risk) * self.spread_pct
+            elif reversing:
+                # Round-trip cost: exit old side + enter new side
+                portfolio_return -= abs(fraction_to_risk) * self.spread_pct * 2.0
+        self._prev_bias = int(bias)
         # ─────────────────────────────────────────────────────────────────────
 
         self.portfolio_value *= (1 + portfolio_return)
@@ -114,6 +133,7 @@ class KellyConvexEnv(gym.Env):
         self.episode_steps = 0
         self.returns_window = []
         self.peak_portfolio_value = 1.0
+        self._prev_bias = 0  # start each episode from a flat/cash position
         
         # Randomize starting index during training to cover the entire dataset
         if self.max_episode_steps < len(self.data):

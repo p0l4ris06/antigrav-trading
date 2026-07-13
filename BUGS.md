@@ -35,17 +35,19 @@ The `0.05` scalar is an arbitrary scale factor, not a fee model. The agent learn
 aggressively because every trade was free. At 15m with Alpaca fees ~0.15–0.25% per side, the
 expected value of a low-conviction trade is negative — but the training env never showed the agent that.
 
-**Fix applied:** Added `spread_pct=0.0020` (0.20% one-way, configurable) as a named parameter.
-On every bar where `|fraction_to_risk| > 1e-6`, the cost is deducted from `portfolio_return` before
-the log-reward is computed:
-```python
-if abs(fraction_to_risk) > 1e-6:
-    spread_cost = abs(fraction_to_risk) * self.spread_pct
-    portfolio_return -= spread_cost
-```
+**Fix applied (v2 — corrected):** Added `spread_pct=0.0020` as a named parameter. Cost is charged
+**once on position entry** (cash → long) and **once on position exit** (long → cash), matching
+Alpaca's taker-fee model. Reversals (direction change) are charged 2×.
+
+Initial implementation (v1) incorrectly applied the cost per-bar while holding, equivalent to
+19.2%/day in fees on 15m data — causing the `portfolio_value < 0.1` kill floor to trigger
+immediately (fitness 0.1000). Corrected in follow-up commit.
+
+Tracking state: `_prev_bias` initialised in `__init__` and reset to 0 in `reset()` so episode
+boundaries are clean (first action of each episode is treated as entering from cash).
+
 `train.py` now accepts `--spread-pct` (default `0.0020`). `auto_optimizer.py` default
-`train_command` includes `--spread-pct 0.0020`. Pass `--spread-pct 0.0` to reproduce old
-frictionless baseline.
+`train_command` includes `--spread-pct 0.0020`.
 
 **Files changed:**
 - `core/agent.py` L7, L18–19, L40–55
