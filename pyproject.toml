@@ -66,7 +66,10 @@ dev = [
 ]
 
 [project.scripts]
-antigravity = "antigravity.gateway.server:main"
+antigrav = "cli.main:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/antigravity", "src/cli"]
 
 [tool.ruff]
 target-version = "py311"
@@ -76,5 +79,6 @@ line-length = 100
 select = ["E", "F", "W", "I", "UP", "B", "SIM"]
 
 [tool.pytest.ini_options]
+pythonpath = ["src"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
