@@ -82,6 +82,7 @@ class OptimizerConfig:
         "python", "train.py",
         "--data", "data/BTC_USDT_15m.parquet", "data/ETH_USDT_15m.parquet", "data/SOL_USDT_15m.parquet",
         "--timesteps", "100000",
+        "--spread-pct", "0.0020",   # 0.20% one-way fee — Alpaca crypto taker rate
     ])
 
     # Loop control

@@ -80,6 +80,15 @@ def live_trade(symbol: str = "BTC/USDT", paper: bool = True):
 
     log_text = "System Initialized. Waiting for market data..."
 
+    # ── Circuit Breaker State ──────────────────────────────────────────────────
+    # These constants are INDEPENDENT of the PPO agent output.
+    # They cap safe_kelly BEFORE it reaches execute_kelly_trade().
+    MAX_ORDER_NOTIONAL = 5_000.0   # Hard cap: no single order may exceed $5,000 notional
+    MAX_DAILY_DD = 0.05            # Kill switch: halt if equity drops 5% from session HWM
+    _session_equity_hwm: float = 0.0   # High-water mark initialised on first successful tick
+    _trading_halted: bool = False      # Latches True on drawdown breach; requires restart to clear
+    # ─────────────────────────────────────────────────────────────────────────
+
     with Live(refresh_per_second=2, screen=True) as live:
         while True:
             try:
@@ -137,6 +146,38 @@ def live_trade(symbol: str = "BTC/USDT", paper: bool = True):
                     # If Long, require at least 20% confidence to beat the spread
                     safe_kelly = kelly_raw if kelly_raw > 0.20 else 0.0
                     action_text = "BUY (LONG)" if safe_kelly > 0 else "CASH (LOW CONFIDENCE)"
+
+                # ── Independent Circuit Breakers ──────────────────────────────
+                # Evaluated AFTER feature scaling and AFTER the agent produces
+                # its raw action — these guards are purely reactive, never
+                # influencing what the model sees.
+
+                # 1. Session HWM initialisation (first tick only)
+                if _session_equity_hwm == 0.0 and equity > 0:
+                    _session_equity_hwm = equity
+
+                # 2. Daily drawdown kill switch
+                if equity > _session_equity_hwm:
+                    _session_equity_hwm = equity   # update HWM on new highs
+                if _session_equity_hwm > 0 and equity < _session_equity_hwm * (1.0 - MAX_DAILY_DD):
+                    dd_pct = (_session_equity_hwm - equity) / _session_equity_hwm * 100
+                    if not _trading_halted:
+                        log_text = (f"[bold red]CIRCUIT BREAKER: Daily drawdown {dd_pct:.1f}% ≥ {MAX_DAILY_DD*100:.0f}% limit. "
+                                    f"Trading HALTED. Restart terminal to resume.[/bold red]")
+                        _trading_halted = True
+                    safe_kelly = 0.0
+                    action_text = "HALTED (MAX DD)"
+
+                # 3. Hard max-notional cap
+                #    kelly_fraction × equity must not exceed MAX_ORDER_NOTIONAL.
+                #    Caps the fraction, not the execution — execute_kelly_trade
+                #    receives a valid [0, 1] fraction and applies it to equity.
+                if safe_kelly > 0 and equity > 0:
+                    kelly_notional = safe_kelly * equity
+                    if kelly_notional > MAX_ORDER_NOTIONAL:
+                        safe_kelly = MAX_ORDER_NOTIONAL / equity   # back-calculate capped fraction
+                        action_text = f"BUY (NOTIONAL CAPPED @ ${MAX_ORDER_NOTIONAL:,.0f})"
+                # ─────────────────────────────────────────────────────────────
 
                 # E. Execution
                 log_text = bridge.execute_kelly_trade(symbol, raw_bias, safe_kelly)

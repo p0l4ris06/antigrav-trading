@@ -32,8 +32,8 @@ class SMCFeatureFactory:
         atr = true_range.rolling_mean(window_size=14, min_samples=14)
         atr_std = true_range.rolling_std(window_size=14, min_samples=14)
 
-        norm_atr = (atr / pl.col("close").clip(lower_bound=eps)).fill_nan(None)
-        norm_atr = (norm_atr / (1.0 + atr_std / (atr + eps))).fill_nan(None)
+        norm_atr = (atr / pl.col("close").clip(lower_bound=eps)).fill_nan(0.0).fill_null(0.0)
+        norm_atr = (norm_atr / (1.0 + atr_std / (atr + eps))).fill_nan(0.0).fill_null(0.0)
 
         # --- Rich Alpha Seed Continuous Oscillators ---
         delta = pl.col("close").diff()

@@ -77,6 +77,9 @@ def main():
     parser.add_argument("--net-arch", type=int, nargs="+", default=None, help="Custom neural network architecture hidden layer widths (e.g. 128 128 64)")
     parser.add_argument("--sharpe-lambda", type=float, default=0.0, help="Sharpe return variance penalty scaling")
     parser.add_argument("--drawdown-lambda", type=float, default=0.0, help="Equity drawdown penalty scaling")
+    parser.add_argument("--spread-pct", type=float, default=0.0020,
+                        help="One-way spread/fee cost as fraction of notional (default 0.0020 = 0.20%%).  "
+                             "Set to 0.0 to reproduce old frictionless behaviour.")
     args = parser.parse_args()
 
     # 1. Load Data — supports multiple files/directories of parquets
@@ -162,7 +165,8 @@ def main():
         max_leverage=3.0,
         target_dim=9,
         sharpe_lambda=args.sharpe_lambda,
-        drawdown_lambda=args.drawdown_lambda
+        drawdown_lambda=args.drawdown_lambda,
+        spread_pct=args.spread_pct,
     )
     train_vec_env = DummyVecEnv([train_env_fn])
     train_vec_env = VecNormalize(train_vec_env, norm_obs=True, norm_reward=False, clip_obs=10.0)
@@ -183,7 +187,8 @@ def main():
         max_episode_steps=len(test_data),
         target_dim=9,
         sharpe_lambda=args.sharpe_lambda,
-        drawdown_lambda=args.drawdown_lambda
+        drawdown_lambda=args.drawdown_lambda,
+        spread_pct=args.spread_pct,
     )
     test_vec_env = DummyVecEnv([test_env_fn])
     test_vec_env = VecNormalize(test_vec_env, norm_obs=True, norm_reward=False, clip_obs=10.0)

@@ -4,7 +4,16 @@ import os
 from gymnasium import spaces
 
 class KellyConvexEnv(gym.Env):
-    def __init__(self, data_stream, max_leverage=3.0, max_episode_steps=1000, target_dim=9, sharpe_lambda=0.0, drawdown_lambda=0.0):
+    def __init__(self, data_stream, max_leverage=3.0, max_episode_steps=1000, target_dim=9, sharpe_lambda=0.0, drawdown_lambda=0.0, spread_pct=0.0020):
+        """
+        spread_pct : float
+            One-way transaction cost as a fraction of notional (default 0.20%).
+            Applied on every step where fraction_to_risk != 0 — i.e. the agent
+            pays to hold any non-zero position each bar. This makes the training
+            simulator more brutal than reality, forcing the agent to only trade
+            when expected log-return genuinely exceeds the spread + fee cost.
+            Alpaca taker fee ~0.15-0.25% per side → 0.0020 is a conservative mid.
+        """
         super().__init__()
         self.data = data_stream
         self.max_leverage = max_leverage
@@ -16,6 +25,7 @@ class KellyConvexEnv(gym.Env):
         # Risk penalty parameters
         self.sharpe_lambda = sharpe_lambda
         self.drawdown_lambda = drawdown_lambda
+        self.spread_pct = spread_pct  # one-way cost fraction
         self.returns_window = []
         self.peak_portfolio_value = 1.0
         
@@ -38,10 +48,20 @@ class KellyConvexEnv(gym.Env):
         else:
             real_asset_return = float(obs[5]) if len(obs) > 5 else 0.0
         portfolio_return = fraction_to_risk * bias * real_asset_return * 0.05
-        
+
+        # ── Spread / Fee Penalty ──────────────────────────────────────────────
+        # Deduct one-way transaction cost proportional to position size on every
+        # bar where the agent holds any non-zero exposure.  This forces the PPO
+        # to only trade when E[log-return] > spread cost, eliminating the
+        # frictionless hallucination that caused live dry-run bleed.
+        if abs(fraction_to_risk) > 1e-6:
+            spread_cost = abs(fraction_to_risk) * self.spread_pct
+            portfolio_return -= spread_cost
+        # ─────────────────────────────────────────────────────────────────────
+
         self.portfolio_value *= (1 + portfolio_return)
         self.portfolio_value = float(np.clip(self.portfolio_value, 1e-5, 1e9))
-        
+
         # Reward: Logarithmic Wealth Utility
         clipped_return = max(portfolio_return, -0.999)
         reward = float(np.log(1 + clipped_return))
