@@ -20,12 +20,15 @@
 
 from core.features import SMCFeatureFactory
 from core.agent import KellyConvexEnv, init_agent, load_agent_model
-from core.alpaca_bridge import AlpacaQuantBridge
+
+# NOTE: AlpacaQuantBridge is intentionally NOT imported here.
+# alpaca-py is a live-trading SDK that may not be installed in the training
+# environment. Import it directly where needed:
+#   from core.alpaca_bridge import AlpacaQuantBridge
 
 __all__ = [
     "SMCFeatureFactory",
     "KellyConvexEnv",
     "init_agent",
     "load_agent_model",
-    "AlpacaQuantBridge",
 ]
