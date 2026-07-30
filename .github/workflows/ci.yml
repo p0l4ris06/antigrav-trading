@@ -1,0 +1,47 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ main, feat/* ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv and dependencies
+        run: |
+          pip install uv
+          uv pip install -e ".[dev]" --system || pip install pytest ruff fastapi uvicorn pydantic requests
+
+      - name: Run Ruff Lint Check
+        run: |
+          ruff check src tests || true
+
+      - name: Run Pytest Suite
+        run: |
+          pytest -v tests/
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build Dashboard
+        run: |
+          cd dashboard
+          npm ci || npm install
+          npm run build

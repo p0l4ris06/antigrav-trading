@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  antigrav-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - AG_HOST=0.0.0.0
+      - AG_PORT=8000
+      - AG_LOG_LEVEL=INFO
+    volumes:
+      - ./data:/app/data
+
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    ports:
+      - "8080:80"
+    depends_on:
+      - antigrav-gateway

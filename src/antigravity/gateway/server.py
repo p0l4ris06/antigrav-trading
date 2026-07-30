@@ -678,8 +678,13 @@ async def ws_simulated_feed(websocket: WebSocket, rate_hz: float | None = None) 
 
 
 # ---------------------------------------------------------------------------
-# REST Endpoints
+# REST Endpoints & Health Probe
 # ---------------------------------------------------------------------------
+@app.get("/health")
+@app.get("/api/health")
+async def healthcheck():
+    """Return 200 OK health status for container probes and load balancers."""
+    return {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}
 @app.get("/api/status")
 async def get_status():
     """Return current system health snapshot."""

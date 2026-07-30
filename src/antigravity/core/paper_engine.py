@@ -205,10 +205,15 @@ class PaperTradingEngine:
         existing.entry_price = round(new_entry, 4)
         existing.margin_used = round(total_size * new_entry, 2)
       else:
-        # Require 3000ms minimum position age before honoring REVERSAL closures
+        # Configurable minimum position age via AG_MIN_REVERSAL_AGE_MS (default: 3000ms)
+        min_reversal_env = os.getenv("AG_MIN_REVERSAL_AGE_MS", "3000.0")
+        try:
+          MIN_REVERSAL_AGE_MS = float(min_reversal_env)
+        except ValueError:
+          MIN_REVERSAL_AGE_MS = 3000.0
+
         now_ms = time.time() * 1000
         age_ms = now_ms - getattr(existing, 'opened_timestamp_ms', 0)
-        MIN_REVERSAL_AGE_MS = 3000.0
         if age_ms < MIN_REVERSAL_AGE_MS:
           logger.info(
               f"reversal.blocked_too_young: {symbol} age={round(age_ms, 1)}ms"
@@ -292,15 +297,17 @@ class PaperTradingEngine:
     except Exception as exc:
         logger.warning(f"reloop.auto_ingest_failed: {exc}")
 
-    # Log trade record to persistent CSV and JSON files for audit analysis
+    # Log trade record to persistent CSV and JSON files with 10MB size-based rotation
     try:
         import csv
         import json
         import os
 
-        # 1. Append to CSV log data/paper_trade_log.csv
+        # 1. Append to CSV log data/paper_trade_log.csv (Rotate if > 10MB)
         csv_path = "data/paper_trade_log.csv"
         os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+        if os.path.exists(csv_path) and os.path.getsize(csv_path) > 10 * 1024 * 1024:
+            os.rename(csv_path, f"{csv_path}.{int(time.time())}.bak")
         file_exists = os.path.exists(csv_path)
         with open(csv_path, "a", newline="") as f:
             writer = csv.writer(f)
@@ -318,8 +325,10 @@ class PaperTradingEngine:
                 reason
             ])
 
-        # 2. Append to JSON audit log data/paper_trades_audit.jsonl
+        # 2. Append to JSON audit log data/paper_trades_audit.jsonl (Rotate if > 10MB)
         json_path = "data/paper_trades_audit.jsonl"
+        if os.path.exists(json_path) and os.path.getsize(json_path) > 10 * 1024 * 1024:
+            os.rename(json_path, f"{json_path}.{int(time.time())}.bak")
         with open(json_path, "a") as f:
             f.write(json.dumps(sample) + "\n")
     except Exception as exc:
