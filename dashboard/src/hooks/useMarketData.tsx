@@ -172,6 +172,7 @@ function useMarketDataProviderValue() {
     setTargetProfitEquity(targetProfit ?? null);
     setMaxDrawdownEquity(maxDrawdown ?? null);
     setTargetStopTriggered(false);
+    setIsAutoTradeEnabled(true);
 
     if (typeof window !== 'undefined') {
       if (targetProfit !== undefined && targetProfit !== null) {
@@ -348,6 +349,13 @@ function useMarketDataProviderValue() {
       });
 
       if (res.ok) {
+        const data = await res.json();
+        if (data.status === 'target_reached' || data.status === 'drawdown_triggered' || data.status === 'execution_disabled') {
+          setIsAutoTradeEnabled(false);
+          setTargetStopTriggered(true);
+          return false;
+        }
+
         const accRes = await fetch(`${apiConfig.baseUrl}/api/paper/account`);
         if (accRes.ok) {
           const acc = await accRes.json();
@@ -405,6 +413,9 @@ function useMarketDataProviderValue() {
       // ignore
     }
 
+    setTargetStopTriggered(false);
+    setIsAutoTradeEnabled(true);
+
     setPaperAccount({
       cash_balance: 100000.0,
       equity: 100000.0,
@@ -441,6 +452,8 @@ function useMarketDataProviderValue() {
     };
 
     setPaperAccount(newAcc);
+    setTargetStopTriggered(false);
+    setIsAutoTradeEnabled(true);
 
     try {
       await fetch(`${apiConfig.baseUrl}/api/paper/balance`, {
@@ -505,11 +518,24 @@ function useMarketDataProviderValue() {
           symbol: activeSym,
         };
 
-        setTradeMarkers(prev => [...prev.slice(-49), newMarker]);
+        const rawEquity = paperAccount?.equity;
+        const currentEquity = (customCapitalRef.current !== null && paperAccount)
+          ? customCapitalRef.current + paperAccount.realized_pnl + paperAccount.unrealized_pnl
+          : rawEquity;
 
-        if (isAutoTradeEnabledRef.current && enabledAssetsRef.current[activeSym] !== false && !targetStopTriggeredRef.current) {
+        const isStopBreached = currentEquity !== undefined && currentEquity !== null && (
+          (targetProfitEquity !== null && currentEquity >= targetProfitEquity) ||
+          (maxDrawdownEquity !== null && currentEquity <= maxDrawdownEquity)
+        );
+
+        if (isStopBreached) {
+          setIsAutoTradeEnabled(false);
+          setTargetStopTriggered(true);
+        }
+
+        if (isAutoTradeEnabledRef.current && enabledAssetsRef.current[activeSym] !== false && !targetStopTriggeredRef.current && !isStopBreached) {
+          setTradeMarkers(prev => [...prev.slice(-49), newMarker]);
           // Dynamic order sizing based on current equity (target ~5% of equity per trade)
-          const currentEquity = paperAccount?.equity ?? 100000.0;
           const targetNotional = Math.max(50.0, currentEquity * 0.05);
           const lastPrice = symState.latestTick.last_price || 1.0;
           
@@ -639,6 +665,16 @@ function useMarketDataProviderValue() {
           }
           if (data.paper_summary) {
             setPaperAccount(data.paper_summary);
+            // Auto-sync frontend custom capital to backend paper engine on restart / discrepancy detection
+            if (customCapitalRef.current !== null && 
+                Math.abs(data.paper_summary.cash_balance - (customCapitalRef.current + data.paper_summary.realized_pnl)) > 5.0 && 
+                Math.abs(data.paper_summary.cash_balance - 100000.0) < 5.0) {
+              fetch(`${apiConfig.baseUrl}/api/paper/balance`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ balance: customCapitalRef.current }),
+              }).catch(() => {});
+            }
           }
           setGatewayConnected(true);
         } else {
