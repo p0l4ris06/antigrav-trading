@@ -490,20 +490,19 @@ function useMarketDataProviderValue() {
     const nowMs = Date.now();
     
     let rawSig: TradeSignalType = 'NEUTRAL';
-    if (obiVal > 0.35) rawSig = 'STRONG BUY';
-    else if (obiVal > 0.20) rawSig = 'BUY';
-    else if (obiVal < -0.35) rawSig = 'STRONG SELL';
-    else if (obiVal < -0.20) rawSig = 'SELL';
+    if (obiVal > 0.30) rawSig = 'STRONG BUY';
+    else if (obiVal > 0.18) rawSig = 'BUY';
+    else if (obiVal < -0.30) rawSig = 'STRONG SELL';
+    else if (obiVal < -0.18) rawSig = 'SELL';
 
     const currentLatched = latchedSignalMapRef.current[activeSym] || 'NEUTRAL';
     const lastTime = lastSignalTimeMapRef.current[activeSym] || 0;
     const timeSinceChange = nowMs - lastTime;
 
     let nextLatched = currentLatched;
-    let latchedActive = false;
 
     if (rawSig !== 'NEUTRAL') {
-      if (currentLatched === 'NEUTRAL' || (rawSig.includes('BUY') !== currentLatched.includes('BUY'))) {
+      if (timeSinceChange > 5000 && (currentLatched === 'NEUTRAL' || (rawSig.includes('BUY') !== currentLatched.includes('BUY')))) {
         nextLatched = rawSig;
         lastSignalTimeMapRef.current[activeSym] = nowMs;
 
@@ -551,9 +550,9 @@ function useMarketDataProviderValue() {
           const minQty = activeSym.includes('BTC') ? 0.0001 : activeSym.includes('ETH') ? 0.001 : 0.01;
           qty = Math.max(minQty, qty);
 
-          // Configure risk parameters: 1.5% Take Profit and 0.75% Stop Loss
-          const stopLoss = markerType === 'BUY' ? lastPrice * 0.9925 : lastPrice * 1.0075;
-          const takeProfit = markerType === 'BUY' ? lastPrice * 1.015 : lastPrice * 0.985;
+          // Configure high-win-rate momentum parameters: 0.60% Take Profit (quick scalp) and 1.20% Stop Loss
+          const stopLoss = markerType === 'BUY' ? lastPrice * 0.988 : lastPrice * 1.012;
+          const takeProfit = markerType === 'BUY' ? lastPrice * 1.006 : lastPrice * 0.994;
 
           submitOrder({
             symbol: activeSym,
@@ -620,10 +619,12 @@ function useMarketDataProviderValue() {
         setSymbolData({ ...currentMap });
       }
 
-      const currentActive = selectedSymbolRef.current;
-      if (currentMap[currentActive]) {
-        updateSignalAndMarkers(currentActive, currentMap[currentActive]);
-      }
+      Object.keys(currentMap).forEach((symKey) => {
+        const sym = symKey as Symbol;
+        if (enabledAssetsRef.current[sym] !== false && currentMap[sym]) {
+          updateSignalAndMarkers(sym, currentMap[sym]);
+        }
+      });
     }, intervalMs);
 
     return () => clearInterval(timer);
@@ -675,6 +676,9 @@ function useMarketDataProviderValue() {
                 body: JSON.stringify({ balance: customCapitalRef.current }),
               }).catch(() => {});
             }
+          }
+          if (data.reloop_telemetry) {
+            setReloopTelemetry(data.reloop_telemetry);
           }
           setGatewayConnected(true);
         } else {

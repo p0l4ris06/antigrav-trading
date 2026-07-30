@@ -687,6 +687,7 @@ async def get_status():
         "ppo_model_loaded": app_state.ppo_model is not None,
         "prices": app_state.prices,
         "paper_summary": app_state.paper_engine.get_summary().model_dump() if app_state.paper_engine else None,
+        "reloop_telemetry": reloop_engine.get_reloop_telemetry(app_state.paper_engine.reloop_buffer if app_state.paper_engine else []),
     }
 
 
