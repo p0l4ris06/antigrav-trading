@@ -29,7 +29,7 @@ dependencies = [
 
     # --- Reinforcement Learning ---
     "gymnasium>=1.0",
-    "stable-baselines3>=2.4",
+    "stable-baselines3>=2.9.0",
     "torch>=2.4",
 
     # --- Configuration ---
