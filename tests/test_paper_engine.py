@@ -140,3 +140,24 @@ def test_atomic_log_rotation(tmp_path):
     backups = list(tmp_path.glob("test_audit.jsonl.*.bak"))
     assert len(backups) == 1
 
+
+def test_non_blocking_background_writer_queue(tmp_path, monkeypatch):
+    monkeypatch.setenv("AG_DATA_DIR", str(tmp_path))
+    test_engine = PaperTradingEngine()
+    
+    # Open and close position to trigger background logging
+    test_engine.submit_order(symbol="AAPL", side="BUY", quantity=10, market_price=220.0)
+    test_engine.close_position("AAPL", 225.0)
+
+    # Wait briefly for daemon writer thread to flush queue
+    test_engine._write_queue.join()
+
+    csv_file = tmp_path / "paper_trade_log.csv"
+    json_file = tmp_path / "paper_trades_audit.jsonl"
+
+    assert csv_file.exists()
+    assert json_file.exists()
+    assert "AAPL" in csv_file.read_text()
+    assert "AAPL" in json_file.read_text()
+
+

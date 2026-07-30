@@ -12,6 +12,7 @@ import csv
 import json
 import logging
 import os
+import queue
 import threading
 import time
 import uuid
@@ -26,13 +27,13 @@ _trade_log_lock = threading.Lock()
 
 
 def rotate_if_needed(path: str, max_bytes: int = MAX_LOG_BYTES) -> None:
-    """Atomic size-based log file rotation helper."""
-    if os.path.exists(path) and os.path.getsize(path) >= max_bytes:
-        bak_path = f"{path}.{int(time.time())}.bak"
-        try:
+    """Atomic size-based log file rotation helper using os.replace."""
+    try:
+        if os.path.exists(path) and os.path.getsize(path) >= max_bytes:
+            bak_path = f"{path}.{int(time.time())}.bak"
             os.replace(path, bak_path)
-        except OSError:
-            pass
+    except Exception as exc:
+        logger.warning(f"rotate_if_needed_failed for {path}: {exc}")
 
 
 class PaperOrder(BaseModel):
@@ -94,6 +95,7 @@ class PaperTradingEngine:
     self.total_trades = 0
     self.winning_trades = 0
 
+    self.data_dir = os.getenv("AG_DATA_DIR", "data")
     env_val = os.getenv("AG_MIN_REVERSAL_AGE_MS")
     if env_val is not None:
       try:
@@ -107,6 +109,50 @@ class PaperTradingEngine:
     self.open_orders: List[PaperOrder] = []
     self.trade_history: List[Dict[str, Any]] = []
     self.reloop_buffer: List[Dict[str, Any]] = []
+
+    # Non-blocking background worker thread for disk logging
+    self._write_queue: queue.Queue[Optional[Dict[str, Any]]] = queue.Queue()
+    self._writer_thread = threading.Thread(target=self._background_writer_loop, daemon=True)
+    self._writer_thread.start()
+
+  def _background_writer_loop(self) -> None:
+    """Asynchronous background worker thread for non-blocking disk persistence."""
+    while True:
+      try:
+        sample = self._write_queue.get()
+        if sample is None:
+          break
+
+        os.makedirs(self.data_dir, exist_ok=True)
+        csv_path = os.path.join(self.data_dir, "paper_trade_log.csv")
+        json_path = os.path.join(self.data_dir, "paper_trades_audit.jsonl")
+
+        with _trade_log_lock:
+          rotate_if_needed(csv_path)
+          file_exists = os.path.exists(csv_path)
+          with open(csv_path, "a", newline="") as f:
+            writer = csv.writer(f)
+            if not file_exists:
+              writer.writerow(["timestamp", "symbol", "side", "size", "entry_price", "close_price", "realized_pnl", "pnl_pct", "reason"])
+            writer.writerow([
+                sample["timestamp"],
+                sample["symbol"],
+                sample["side"],
+                sample["size"],
+                sample["entry_price"],
+                sample["exit_price"],
+                sample["realized_pnl"],
+                sample["pnl_pct"],
+                sample["reason"]
+            ])
+
+          rotate_if_needed(json_path)
+          with open(json_path, "a") as f:
+            f.write(json.dumps(sample) + "\n")
+      except Exception as exc:
+        logger.warning(f"background_writer.error: {exc}")
+      finally:
+        self._write_queue.task_done()
 
   def get_summary(self) -> PaperAccountSummary:
     unrealized_total = sum(p.unrealized_pnl for p in self.positions.values())
@@ -321,40 +367,11 @@ class PaperTradingEngine:
     sample['relooped_to_rl'] = reloop_success
     self.reloop_buffer.append(sample)
 
-    # Thread-safe locked write to persistent CSV and JSON files with 10MB size-based rotation
+    # Enqueue sample to background worker thread for non-blocking disk persistence
     try:
-        data_dir = os.getenv("AG_DATA_DIR", "data")
-        os.makedirs(data_dir, exist_ok=True)
-
-        csv_path = os.path.join(data_dir, "paper_trade_log.csv")
-        json_path = os.path.join(data_dir, "paper_trades_audit.jsonl")
-
-        with _trade_log_lock:
-            # 1. Rotate if needed & append to CSV log
-            rotate_if_needed(csv_path)
-            file_exists = os.path.exists(csv_path)
-            with open(csv_path, "a", newline="") as f:
-                writer = csv.writer(f)
-                if not file_exists:
-                    writer.writerow(["timestamp", "symbol", "side", "size", "entry_price", "close_price", "realized_pnl", "pnl_pct", "reason"])
-                writer.writerow([
-                    sample["timestamp"],
-                    symbol,
-                    pos.side,
-                    pos.size,
-                    pos.entry_price,
-                    close_price,
-                    pnl,
-                    sample["pnl_pct"],
-                    reason
-                ])
-
-            # 2. Rotate if needed & append to JSON audit log
-            rotate_if_needed(json_path)
-            with open(json_path, "a") as f:
-                f.write(json.dumps(sample) + "\n")
+        self._write_queue.put_nowait(sample)
     except Exception as exc:
-        logger.warning(f"trade_logger.file_write_failed: {exc}")
+        logger.warning(f"trade_logger.enqueue_failed: {exc}")
 
     return pos
 
