@@ -602,6 +602,8 @@ function useMarketDataProviderValue() {
           const stopLoss = markerType === 'BUY' ? lastPrice * 0.975 : lastPrice * 1.025;
           const takeProfit = markerType === 'BUY' ? lastPrice * 1.012 : lastPrice * 0.988;
 
+          console.debug(`[useMarketData] SEND_SIGNAL ${activeSym} side=${markerType} OBI=${obiVal.toFixed(3)} activePositions=${activePositionsCount} ts=${nowMs}`);
+
           submitOrder({
             symbol: activeSym,
             side: markerType,

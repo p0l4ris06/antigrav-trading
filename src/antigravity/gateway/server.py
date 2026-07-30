@@ -598,16 +598,29 @@ async def ws_simulated_feed(websocket: WebSocket, rate_hz: float | None = None) 
     base_price = 50_000.0
     tick_id = 0
 
+    if not hasattr(app_state, "server_symbol_trends"):
+        app_state.server_symbol_trends = {}
+
     try:
         while True:
-            # Stream ticks and update mark-to-market prices for all enabled portfolio assets
+            # Stream ticks and update mark-to-market prices for all enabled portfolio assets with persistent micro-trends
             symbol_list = list(app_state.enabled_symbols) if app_state.enabled_symbols else ["BTCUSDT"]
             for sym in symbol_list:
+                trend = app_state.server_symbol_trends.get(sym)
+                if not trend or trend.get("ticks_left", 0) <= 0:
+                    trend = {
+                        "drift": random.choice([0.00015, -0.00015]),
+                        "ticks_left": random.randint(40, 100),
+                    }
+                    app_state.server_symbol_trends[sym] = trend
+                else:
+                    trend["ticks_left"] -= 1
+
                 sym_price = app_state.prices.get(sym, 0.0)
                 if not sym_price or sym_price <= 0:
                     sym_price = 98000.0 if "BTC" in sym else 3400.0 if "ETH" in sym else 200.0
                 
-                sym_price += random.gauss(0, sym_price * 0.0001)
+                sym_price += sym_price * trend["drift"] + random.gauss(0, sym_price * 0.00003)
                 sym_price = round(sym_price, 2)
                 spread = max(0.01, round(sym_price * 0.0002, 2))
                 bid = round(sym_price - spread / 2, 2)
@@ -754,6 +767,7 @@ async def get_paper_trade_history():
 @app.post("/api/paper/order")
 async def submit_paper_order(order_req: PaperOrderRequest):
     """Submit an order for execution (paper or live Trading 212)."""
+    logger.info("order.received", symbol=order_req.symbol, side=order_req.side, quantity=order_req.quantity, source=order_req.source)
     # Check if execution is paused or disabled globally (e.g. by target stop or user pause)
     if order_req.source == "BOT" and not app_state.execution_enabled:
         return {"status": "execution_disabled", "detail": "Bot trading execution is currently paused or disabled."}
