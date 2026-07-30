@@ -9,10 +9,12 @@ build/
 
 # Environment
 .env*
+!.env.example
 
 # IDE
 .vscode/
 .idea/
+.cursor/
 
 # OS
 Thumbs.db
@@ -32,10 +34,12 @@ logs/
 *.log
 trading_log.txt
 .daemon_state.json
+.daemon_state.json.lock
 .daemon_halt
 .checkpoints/
 .autoresearch_backups/
 experiments/
+.antigravitycli/
 
 # DB
 clickhouse_data/
