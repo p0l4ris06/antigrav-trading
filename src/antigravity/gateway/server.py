@@ -461,6 +461,8 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("gateway.shutting_down")
+    if app_state.paper_engine:
+        app_state.paper_engine.stop()
     if app_state.alpaca_task:
         app_state.alpaca_task.cancel()
     app_state.consumer.stop()

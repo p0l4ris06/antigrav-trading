@@ -110,10 +110,20 @@ class PaperTradingEngine:
     self.trade_history: List[Dict[str, Any]] = []
     self.reloop_buffer: List[Dict[str, Any]] = []
 
-    # Non-blocking background worker thread for disk logging
-    self._write_queue: queue.Queue[Optional[Dict[str, Any]]] = queue.Queue()
+    # Non-blocking background worker thread for disk logging with bounded queue backpressure (maxsize=10000)
+    self._write_queue: queue.Queue[Optional[Dict[str, Any]]] = queue.Queue(maxsize=10000)
     self._writer_thread = threading.Thread(target=self._background_writer_loop, daemon=True)
     self._writer_thread.start()
+
+  def stop(self, timeout: float = 5.0) -> None:
+    """Gracefully stop background writer thread and flush remaining queued log samples."""
+    if self._writer_thread and self._writer_thread.is_alive():
+      try:
+        self._write_queue.put(None, timeout=1.0)
+        self._writer_thread.join(timeout=timeout)
+        logger.info("paper_engine.background_writer_stopped")
+      except Exception as exc:
+        logger.warning(f"paper_engine.stop_failed: {exc}")
 
   def _background_writer_loop(self) -> None:
     """Asynchronous background worker thread for non-blocking disk persistence."""
