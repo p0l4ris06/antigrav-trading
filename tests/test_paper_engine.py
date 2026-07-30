@@ -114,3 +114,29 @@ def test_take_profit_trigger(engine):
     assert engine.total_trades == 1
     assert engine.winning_trades == 1
     assert engine.realized_pnl == 60.0  # (136 - 130) * 10 = +$60
+
+
+def test_custom_min_reversal_age_ms(monkeypatch):
+    # Test instance override (e.g. 1000ms)
+    custom_eng = PaperTradingEngine(min_reversal_age_ms=1000.0)
+    assert custom_eng.min_reversal_age_ms == 1000.0
+
+    # Test env var override (e.g. 5000ms)
+    monkeypatch.setenv("AG_MIN_REVERSAL_AGE_MS", "5000.0")
+    env_eng = PaperTradingEngine()
+    assert env_eng.min_reversal_age_ms == 5000.0
+
+
+def test_atomic_log_rotation(tmp_path):
+    from antigravity.core.paper_engine import rotate_if_needed
+    test_log = tmp_path / "test_audit.jsonl"
+    
+    # Create file > 10MB
+    test_log.write_bytes(b"X" * (10 * 1024 * 1024 + 100))
+    rotate_if_needed(str(test_log))
+
+    # Original path should no longer exist, rotated backup should exist
+    assert not test_log.exists()
+    backups = list(tmp_path.glob("test_audit.jsonl.*.bak"))
+    assert len(backups) == 1
+

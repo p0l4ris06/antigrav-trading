@@ -8,7 +8,11 @@ both automated bot trades and human manual orders.
 
 from __future__ import annotations
 
+import csv
+import json
 import logging
+import os
+import threading
 import time
 import uuid
 from datetime import datetime, timezone
@@ -16,6 +20,19 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
+
+MAX_LOG_BYTES = 10 * 1024 * 1024  # 10MB
+_trade_log_lock = threading.Lock()
+
+
+def rotate_if_needed(path: str, max_bytes: int = MAX_LOG_BYTES) -> None:
+    """Atomic size-based log file rotation helper."""
+    if os.path.exists(path) and os.path.getsize(path) >= max_bytes:
+        bak_path = f"{path}.{int(time.time())}.bak"
+        try:
+            os.replace(path, bak_path)
+        except OSError:
+            pass
 
 
 class PaperOrder(BaseModel):
@@ -63,19 +80,28 @@ class PaperAccountSummary(BaseModel):
   win_rate: float = 0.0
   total_trades: int = 0
   winning_trades: int = 0
-  positions: List[PaperPosition] = []
-  open_orders: List[PaperOrder] = []
+  positions: List[PaperPosition] = Field(default_factory=list)
+  open_orders: List[PaperOrder] = Field(default_factory=list)
 
 
 class PaperTradingEngine:
   """In-memory paper trading simulation engine with order matching & PnL tracking."""
 
-  def __init__(self, initial_balance: float = 100_000.0):
+  def __init__(self, initial_balance: float = 100_000.0, min_reversal_age_ms: Optional[float] = None):
     self.initial_balance = initial_balance
     self.cash_balance = initial_balance
     self.realized_pnl = 0.0
     self.total_trades = 0
     self.winning_trades = 0
+
+    env_val = os.getenv("AG_MIN_REVERSAL_AGE_MS")
+    if env_val is not None:
+      try:
+        self.min_reversal_age_ms = float(env_val)
+      except ValueError:
+        self.min_reversal_age_ms = min_reversal_age_ms if min_reversal_age_ms is not None else 3000.0
+    else:
+      self.min_reversal_age_ms = min_reversal_age_ms if min_reversal_age_ms is not None else 3000.0
 
     self.positions: Dict[str, PaperPosition] = {}
     self.open_orders: List[PaperOrder] = []
@@ -205,19 +231,12 @@ class PaperTradingEngine:
         existing.entry_price = round(new_entry, 4)
         existing.margin_used = round(total_size * new_entry, 2)
       else:
-        # Configurable minimum position age via AG_MIN_REVERSAL_AGE_MS (default: 3000ms)
-        min_reversal_env = os.getenv("AG_MIN_REVERSAL_AGE_MS", "3000.0")
-        try:
-          MIN_REVERSAL_AGE_MS = float(min_reversal_env)
-        except ValueError:
-          MIN_REVERSAL_AGE_MS = 3000.0
-
         now_ms = time.time() * 1000
         age_ms = now_ms - getattr(existing, 'opened_timestamp_ms', 0)
-        if age_ms < MIN_REVERSAL_AGE_MS:
+        if age_ms < self.min_reversal_age_ms:
           logger.info(
               f"reversal.blocked_too_young: {symbol} age={round(age_ms, 1)}ms"
-              f" < min={MIN_REVERSAL_AGE_MS}ms"
+              f" < min={self.min_reversal_age_ms}ms"
           )
           return
 
@@ -238,6 +257,7 @@ class PaperTradingEngine:
         margin_used=round(margin, 2),
         stop_loss=order.stop_loss,
         take_profit=order.take_profit,
+        opened_timestamp_ms=time.time() * 1000,
     )
     self.positions[order.symbol] = pos
 
@@ -274,6 +294,7 @@ class PaperTradingEngine:
     }
     self.trade_history.append(trade_record)
 
+    reloop_success = False
     sample = {
         'sample_id': f"EXP-{int(time.time() * 1000)}",
         'symbol': symbol,
@@ -286,51 +307,52 @@ class PaperTradingEngine:
         'reward': round(pnl - 0.0005 * close_price * pos.size, 4),  # Net reward after slippage/cost
         'reason': reason,
         'timestamp': datetime.now(timezone.utc).isoformat(),
-        'relooped_to_rl': True,
+        'relooped_to_rl': False,
     }
-    self.reloop_buffer.append(sample)
 
     # Immediately persist trade experience for RL & Autoresearch Engine
     try:
         from antigravity.rl.reloop import reloop_engine
         reloop_engine.ingest_samples([sample])
+        reloop_success = True
     except Exception as exc:
         logger.warning(f"reloop.auto_ingest_failed: {exc}")
 
-    # Log trade record to persistent CSV and JSON files with 10MB size-based rotation
+    sample['relooped_to_rl'] = reloop_success
+    self.reloop_buffer.append(sample)
+
+    # Thread-safe locked write to persistent CSV and JSON files with 10MB size-based rotation
     try:
-        import csv
-        import json
-        import os
+        data_dir = os.getenv("AG_DATA_DIR", "data")
+        os.makedirs(data_dir, exist_ok=True)
 
-        # 1. Append to CSV log data/paper_trade_log.csv (Rotate if > 10MB)
-        csv_path = "data/paper_trade_log.csv"
-        os.makedirs(os.path.dirname(csv_path), exist_ok=True)
-        if os.path.exists(csv_path) and os.path.getsize(csv_path) > 10 * 1024 * 1024:
-            os.rename(csv_path, f"{csv_path}.{int(time.time())}.bak")
-        file_exists = os.path.exists(csv_path)
-        with open(csv_path, "a", newline="") as f:
-            writer = csv.writer(f)
-            if not file_exists:
-                writer.writerow(["timestamp", "symbol", "side", "size", "entry_price", "close_price", "realized_pnl", "pnl_pct", "reason"])
-            writer.writerow([
-                sample["timestamp"],
-                symbol,
-                pos.side,
-                pos.size,
-                pos.entry_price,
-                close_price,
-                pnl,
-                sample["pnl_pct"],
-                reason
-            ])
+        csv_path = os.path.join(data_dir, "paper_trade_log.csv")
+        json_path = os.path.join(data_dir, "paper_trades_audit.jsonl")
 
-        # 2. Append to JSON audit log data/paper_trades_audit.jsonl (Rotate if > 10MB)
-        json_path = "data/paper_trades_audit.jsonl"
-        if os.path.exists(json_path) and os.path.getsize(json_path) > 10 * 1024 * 1024:
-            os.rename(json_path, f"{json_path}.{int(time.time())}.bak")
-        with open(json_path, "a") as f:
-            f.write(json.dumps(sample) + "\n")
+        with _trade_log_lock:
+            # 1. Rotate if needed & append to CSV log
+            rotate_if_needed(csv_path)
+            file_exists = os.path.exists(csv_path)
+            with open(csv_path, "a", newline="") as f:
+                writer = csv.writer(f)
+                if not file_exists:
+                    writer.writerow(["timestamp", "symbol", "side", "size", "entry_price", "close_price", "realized_pnl", "pnl_pct", "reason"])
+                writer.writerow([
+                    sample["timestamp"],
+                    symbol,
+                    pos.side,
+                    pos.size,
+                    pos.entry_price,
+                    close_price,
+                    pnl,
+                    sample["pnl_pct"],
+                    reason
+                ])
+
+            # 2. Rotate if needed & append to JSON audit log
+            rotate_if_needed(json_path)
+            with open(json_path, "a") as f:
+                f.write(json.dumps(sample) + "\n")
     except Exception as exc:
         logger.warning(f"trade_logger.file_write_failed: {exc}")
 
