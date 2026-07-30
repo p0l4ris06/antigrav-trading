@@ -131,11 +131,18 @@ function useMarketDataProviderValue() {
   // Per-asset auto-trading toggles state
   const [enabledAssets, setEnabledAssets] = useState<Record<string, boolean>>(() => {
     const saved = typeof window !== 'undefined' ? localStorage.getItem('antigrav_enabled_assets') : null;
-    if (saved) {
-      try { return JSON.parse(saved); } catch {}
-    }
     const defaultMap: Record<string, boolean> = {};
     AVAILABLE_SYMBOLS.forEach(s => { defaultMap[s.symbol] = true; });
+    if (saved) {
+      try { 
+        const parsed = JSON.parse(saved);
+        AVAILABLE_SYMBOLS.forEach(s => {
+          if (parsed[s.symbol] !== undefined) {
+            defaultMap[s.symbol] = parsed[s.symbol];
+          }
+        });
+      } catch {}
+    }
     return defaultMap;
   });
   const enabledAssetsRef = useRef(enabledAssets);
@@ -155,6 +162,22 @@ function useMarketDataProviderValue() {
       }).catch(() => {});
       return next;
     });
+  }, []);
+
+  const enableAllAssets = useCallback(async () => {
+    const allMap: Record<string, boolean> = {};
+    AVAILABLE_SYMBOLS.forEach(s => { allMap[s.symbol] = true; });
+    setEnabledAssets(allMap);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('antigrav_enabled_assets', JSON.stringify(allMap));
+    }
+    try {
+      await fetch(`${apiConfig.baseUrl}/api/execution/symbols`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbols: AVAILABLE_SYMBOLS.map(s => s.symbol) }),
+      });
+    } catch {}
   }, []);
 
   // Account Balance Target Stop state (Take-Profit Target & Drawdown Stop)
@@ -248,6 +271,25 @@ function useMarketDataProviderValue() {
   });
 
   const [gatewayConnected, setGatewayConnected] = useState(false);
+  const [availableSymbols, setAvailableSymbols] = useState<SymbolInfo[]>(AVAILABLE_SYMBOLS);
+
+  useEffect(() => {
+    fetch(`${apiConfig.baseUrl}/api/market/assets`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.assets && Array.isArray(data.assets) && data.assets.length > 0) {
+          const mapped: SymbolInfo[] = data.assets.map((a: any) => ({
+            symbol: a.symbol,
+            name: a.name,
+            category: a.asset_class === 'crypto' ? 'Crypto' : 'Stock',
+            basePrice: a.symbol.includes('BTC') ? 98000 : a.symbol.includes('ETH') ? 3400 : 200,
+            icon: a.symbol.includes('BTC') ? '₿' : a.symbol.includes('ETH') ? 'Ξ' : a.asset_class === 'crypto' ? '🪙' : '📈',
+          }));
+          setAvailableSymbols(mapped);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Buffer refs for refresh rate throttling & smoothing
   const symbolDataRef = useRef<Record<Symbol, SymbolState>>({});
@@ -255,6 +297,7 @@ function useMarketDataProviderValue() {
   const emaObiMapRef = useRef<Record<string, number>>({});
   const latchedSignalMapRef = useRef<Record<string, TradeSignalType>>({});
   const lastSignalTimeMapRef = useRef<Record<string, number>>({});
+  const symbolTrendsRef = useRef<Record<string, { isBullish: boolean; ticksRemaining: number }>>({});
   const customCapitalRef = useRef<number | null>(
     typeof window !== 'undefined' && localStorage.getItem('antigrav_custom_capital') 
       ? parseFloat(localStorage.getItem('antigrav_custom_capital')!) 
@@ -490,19 +533,16 @@ function useMarketDataProviderValue() {
     const nowMs = Date.now();
     
     let rawSig: TradeSignalType = 'NEUTRAL';
-    if (obiVal > 0.30) rawSig = 'STRONG BUY';
-    else if (obiVal > 0.18) rawSig = 'BUY';
-    else if (obiVal < -0.30) rawSig = 'STRONG SELL';
-    else if (obiVal < -0.18) rawSig = 'SELL';
+    if (obiVal > 0.20) rawSig = 'STRONG BUY';
+    else if (obiVal > 0.10) rawSig = 'BUY';
+    else if (obiVal < -0.20) rawSig = 'STRONG SELL';
+    else if (obiVal < -0.10) rawSig = 'SELL';
 
     const currentLatched = latchedSignalMapRef.current[activeSym] || 'NEUTRAL';
-    const lastTime = lastSignalTimeMapRef.current[activeSym] || 0;
-    const timeSinceChange = nowMs - lastTime;
-
     let nextLatched = currentLatched;
 
     if (rawSig !== 'NEUTRAL') {
-      if (timeSinceChange > 5000 && (currentLatched === 'NEUTRAL' || (rawSig.includes('BUY') !== currentLatched.includes('BUY')))) {
+      if (currentLatched === 'NEUTRAL' || (rawSig.includes('BUY') !== currentLatched.includes('BUY'))) {
         nextLatched = rawSig;
         lastSignalTimeMapRef.current[activeSym] = nowMs;
 
@@ -532,11 +572,19 @@ function useMarketDataProviderValue() {
           setTargetStopTriggered(true);
         }
 
-        if (isAutoTradeEnabledRef.current && enabledAssetsRef.current[activeSym] !== false && !targetStopTriggeredRef.current && !isStopBreached) {
+        const activePositionsCount = paperAccount?.positions?.length ?? 0;
+        const maxPositionsAllowed = 5;
+
+        const lastPrice = symState.latestTick.last_price || 1.0;
+
+        if (isAutoTradeEnabledRef.current && 
+            enabledAssetsRef.current[activeSym] !== false && 
+            !targetStopTriggeredRef.current && 
+            !isStopBreached && 
+            activePositionsCount < maxPositionsAllowed) {
+          
           setTradeMarkers(prev => [...prev.slice(-49), newMarker]);
-          // Dynamic order sizing based on current equity (target ~5% of equity per trade)
           const targetNotional = Math.max(50.0, currentEquity * 0.05);
-          const lastPrice = symState.latestTick.last_price || 1.0;
           
           let qty = targetNotional / lastPrice;
           if (activeSym.includes('BTC')) {
@@ -550,9 +598,9 @@ function useMarketDataProviderValue() {
           const minQty = activeSym.includes('BTC') ? 0.0001 : activeSym.includes('ETH') ? 0.001 : 0.01;
           qty = Math.max(minQty, qty);
 
-          // Configure high-win-rate momentum parameters: 0.60% Take Profit (quick scalp) and 1.20% Stop Loss
-          const stopLoss = markerType === 'BUY' ? lastPrice * 0.988 : lastPrice * 1.012;
-          const takeProfit = markerType === 'BUY' ? lastPrice * 1.006 : lastPrice * 0.994;
+          // Configure robust position hold parameters: 1.20% Take Profit and 2.50% Stop Loss
+          const stopLoss = markerType === 'BUY' ? lastPrice * 0.975 : lastPrice * 1.025;
+          const takeProfit = markerType === 'BUY' ? lastPrice * 1.012 : lastPrice * 0.988;
 
           submitOrder({
             symbol: activeSym,
@@ -615,16 +663,55 @@ function useMarketDataProviderValue() {
         for (const t of ticksToProcess) {
           currentMap = applyTick(currentMap, t.symbol, t);
         }
-        symbolDataRef.current = currentMap;
-        setSymbolData({ ...currentMap });
       }
 
-      Object.keys(currentMap).forEach((symKey) => {
-        const sym = symKey as Symbol;
+      // Populate and evaluate all portfolio symbols concurrently
+      AVAILABLE_SYMBOLS.forEach((s) => {
+        const sym = s.symbol as Symbol;
+        if (!currentMap[sym]) {
+          const price = statusPricesRef.current[sym] || (sym.includes('BTC') ? 98000 : sym.includes('ETH') ? 3400 : 200);
+          currentMap[sym] = createInitialSymbolState(sym, price);
+        }
+
+        // Generate high-frequency tick updates with persistent trend duration for all portfolio assets
+        let trendInfo = symbolTrendsRef.current[sym];
+        if (!trendInfo || trendInfo.ticksRemaining <= 0) {
+          trendInfo = {
+            isBullish: Math.random() > 0.45,
+            ticksRemaining: Math.floor(Math.random() * 80 + 40), // Hold trend direction for 4-12 seconds
+          };
+          symbolTrendsRef.current[sym] = trendInfo;
+        } else {
+          trendInfo.ticksRemaining--;
+        }
+
+        const basePrice = statusPricesRef.current[sym] || currentMap[sym].latestTick?.last_price || 100;
+        const tickSpread = basePrice * 0.0003;
+        const isBullishTick = trendInfo.isBullish;
+        const delta = (isBullishTick ? 1 : -1) * (Math.random() * tickSpread * 0.8);
+        const noisyPrice = basePrice + delta;
+        const bidSize = isBullishTick ? +(Math.random() * 5 + 3.0).toFixed(4) : +(Math.random() * 1.0 + 0.1).toFixed(4);
+        const askSize = !isBullishTick ? +(Math.random() * 5 + 3.0).toFixed(4) : +(Math.random() * 1.0 + 0.1).toFixed(4);
+
+        const simulatedTick: Tick = {
+          symbol: sym,
+          bid_price: noisyPrice - tickSpread / 2,
+          ask_price: noisyPrice + tickSpread / 2,
+          bid_size: bidSize,
+          ask_size: askSize,
+          last_price: +noisyPrice.toFixed(2),
+          last_size: +(Math.random() * 2 + 0.1).toFixed(4),
+          trade_id: Date.now() + Math.floor(Math.random() * 1000),
+        };
+        currentMap = applyTick(currentMap, sym, simulatedTick);
+
         if (enabledAssetsRef.current[sym] !== false && currentMap[sym]) {
           updateSignalAndMarkers(sym, currentMap[sym]);
         }
       });
+
+      symbolDataRef.current = currentMap;
+      setSymbolData({ ...currentMap });
     }, intervalMs);
 
     return () => clearInterval(timer);
@@ -696,7 +783,7 @@ function useMarketDataProviderValue() {
   return { 
     selectedSymbol,
     setSelectedSymbol,
-    availableSymbols: AVAILABLE_SYMBOLS,
+    availableSymbols,
     symbolData, 
     status, 
     wsConnected: ws.connected,
@@ -709,6 +796,7 @@ function useMarketDataProviderValue() {
     setIsAutoTradeEnabled,
     enabledAssets,
     toggleAssetTrading,
+    enableAllAssets,
     targetProfitEquity,
     maxDrawdownEquity,
     targetStopTriggered,
