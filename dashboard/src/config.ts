@@ -14,21 +14,19 @@
 function getApiBaseUrl(): string {
   const envUrl = import.meta.env.VITE_API_BASE_URL;
   
-  // If explicitly set in environment, use it
   if (envUrl) {
     return envUrl;
   }
   
-  // In development, detect if we're on Vite dev server and point to gateway
   if (typeof window !== 'undefined') {
-    const devPorts = ['5173', '8080', '3000', ''];
-    if (devPorts.includes(window.location.port)) {
-      // Try to use localhost:8000 for development
+    const devPorts = ['5173', '8080', '3000'];
+    const isLocalhost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+    if (isLocalhost || devPorts.includes(window.location.port)) {
       return 'http://localhost:8000';
     }
+    return `${window.location.protocol}//${window.location.host}`;
   }
   
-  // Fall back to same-origin (empty string) for production
   return '';
 }
 
@@ -39,16 +37,14 @@ function getWsBaseUrl(): string {
   const envUrl = import.meta.env.VITE_WS_BASE_URL;
   
   if (envUrl) {
-    return envUrl;
+    return envUrl.replace(/\/$/, '');
   }
   
-  // Construct from API base URL
   const apiUrl = getApiBaseUrl();
   if (apiUrl) {
-    return apiUrl.replace(/^http/, 'ws');
+    return apiUrl.replace(/^http/, 'ws').replace(/\/$/, '');
   }
   
-  // Fall back to same-origin WebSocket
   if (typeof window !== 'undefined') {
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
     return `${protocol}://${window.location.host}`;
