@@ -563,8 +563,8 @@ function useMarketDataProviderValue() {
           : rawEquity;
 
         const isStopBreached = currentEquity !== undefined && currentEquity !== null && (
-          (targetProfitEquity !== null && currentEquity >= targetProfitEquity) ||
-          (maxDrawdownEquity !== null && currentEquity <= maxDrawdownEquity)
+          (targetProfitEquity !== null && targetProfitEquity > currentEquity * 0.98 && currentEquity >= targetProfitEquity) ||
+          (maxDrawdownEquity !== null && maxDrawdownEquity < currentEquity * 1.02 && currentEquity <= maxDrawdownEquity)
         );
 
         if (isStopBreached) {

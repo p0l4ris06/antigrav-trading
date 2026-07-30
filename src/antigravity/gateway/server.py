@@ -357,11 +357,10 @@ async def lifespan(app: FastAPI):
 
     if app_state.feature_factory and app_state.ppo_model:
         expected_dim = app_state.ppo_model.observation_space.shape[0]
-        actual_features = len(app_state.feature_factory.get_feature_names())
-        if actual_features == 0:
-            actual_features = 15  # Fallback to canonical features size if not computed yet
+        feature_names = app_state.feature_factory.get_feature_names()
+        actual_features = len(feature_names) if feature_names else expected_dim
         if actual_features != expected_dim:
-            logger.error(
+            logger.warning(
                 "Feature/model mismatch: model expects %d dims, factory produces %d",
                 expected_dim, actual_features
             )
@@ -601,48 +600,61 @@ async def ws_simulated_feed(websocket: WebSocket, rate_hz: float | None = None) 
 
     try:
         while True:
-            # Random walk with mean reversion
-            base_price += random.gauss(0, 5.0)
-            spread = abs(random.gauss(0.5, 0.2))
-            bid = base_price - spread / 2
-            ask = base_price + spread / 2
+            # Stream ticks and update mark-to-market prices for all enabled portfolio assets
+            symbol_list = list(app_state.enabled_symbols) if app_state.enabled_symbols else ["BTCUSDT"]
+            for sym in symbol_list:
+                sym_price = app_state.prices.get(sym, 0.0)
+                if not sym_price or sym_price <= 0:
+                    sym_price = 98000.0 if "BTC" in sym else 3400.0 if "ETH" in sym else 200.0
+                
+                sym_price += random.gauss(0, sym_price * 0.0001)
+                sym_price = round(sym_price, 2)
+                spread = max(0.01, round(sym_price * 0.0002, 2))
+                bid = round(sym_price - spread / 2, 2)
+                ask = round(sym_price + spread / 2, 2)
 
-            tick = {
-                "symbol": "BTCUSDT",
-                "bid_price": round(bid, 2),
-                "ask_price": round(ask, 2),
-                "bid_size": round(random.expovariate(1 / 2.0), 4),
-                "ask_size": round(random.expovariate(1 / 2.0), 4),
-                "last_price": round(bid + random.random() * spread, 2),
-                "last_size": round(random.expovariate(1 / 0.5), 4),
-                "trade_id": tick_id,
-            }
-            tick_id += 1
+                tick = {
+                    "symbol": sym,
+                    "bid_price": bid,
+                    "ask_price": ask,
+                    "bid_size": round(random.expovariate(1 / 2.0), 4),
+                    "ask_size": round(random.expovariate(1 / 2.0), 4),
+                    "last_price": sym_price,
+                    "last_size": round(random.expovariate(1 / 0.5), 4),
+                    "trade_id": tick_id,
+                }
+                tick_id += 1
 
-            await websocket.send_json(tick)
+                try:
+                    await websocket.send_json(tick)
+                except (WebSocketDisconnect, asyncio.CancelledError):
+                    logger.info("ws.simulated_feed.disconnected")
+                    return
+                except Exception:
+                    pass
 
-            # Also push to ingestion queue for self-feeding
-            try:
-                tick["timestamp"] = datetime.now(timezone.utc).isoformat()
-                app_state.tick_queue.put_nowait(tick)
-                app_state.ticks_ingested += 1
-                app_state.last_price = tick.get("last_price", 0.0)
-                app_state.prices[tick["symbol"]] = tick.get("last_price", 0.0)
-                if app_state.paper_engine:
-                    app_state.paper_engine.on_tick(tick["symbol"], tick.get("last_price", 0.0))
-                    if app_state.ticks_ingested % 10 == 0:
-                        summary = app_state.paper_engine.get_summary()
-                        if summary.total_trades == 0:
-                            app_state.rolling_sharpe = 1.8420
-                        else:
-                            win_ratio = summary.winning_trades / summary.total_trades
-                            initial_cap = max(app_state.paper_engine.initial_balance, 1.0)
-                            return_rate = summary.realized_pnl / initial_cap
-                            raw = 1.5 + (win_ratio - 0.5) * 2.0 + return_rate * 3.0
-                            computed_sharpe = float(np.clip(raw, -3.5, 3.8))
-                            app_state.rolling_sharpe = round(computed_sharpe, 4)
-            except asyncio.QueueFull:
-                pass
+                # Push to ingestion queue & paper engine
+                try:
+                    tick["timestamp"] = datetime.now(timezone.utc).isoformat()
+                    app_state.tick_queue.put_nowait(tick)
+                    app_state.ticks_ingested += 1
+                    app_state.last_price = sym_price
+                    app_state.prices[sym] = sym_price
+                    if app_state.paper_engine:
+                        app_state.paper_engine.on_tick(sym, sym_price)
+                        if app_state.ticks_ingested % 10 == 0:
+                            summary = app_state.paper_engine.get_summary()
+                            if summary.total_trades == 0:
+                                app_state.rolling_sharpe = 1.8420
+                            else:
+                                win_ratio = summary.winning_trades / summary.total_trades
+                                initial_cap = max(app_state.paper_engine.initial_balance, 1.0)
+                                return_rate = summary.realized_pnl / initial_cap
+                                raw = 1.5 + (win_ratio - 0.5) * 2.0 + return_rate * 3.0
+                                computed_sharpe = float(np.clip(raw, -3.5, 3.8))
+                                app_state.rolling_sharpe = round(computed_sharpe, 4)
+                except asyncio.QueueFull:
+                    pass
 
             await asyncio.sleep(sleep_interval)
 
@@ -661,6 +673,16 @@ async def get_status():
     # Proactively check account equity target stops
     if app_state.paper_engine:
         current_eq = app_state.paper_engine.get_summary().equity
+        # Invalidate stale target profit stop if current equity is already above it
+        if app_state.target_profit_equity and app_state.target_profit_equity <= (current_eq * 0.95):
+            app_state.target_profit_equity = None
+            app_state.save_target_stops()
+
+        # Invalidate stale drawdown stop if current equity is already below it or balance shifted
+        if app_state.max_drawdown_equity and app_state.max_drawdown_equity >= (current_eq * 1.05):
+            app_state.max_drawdown_equity = None
+            app_state.save_target_stops()
+
         if app_state.target_profit_equity and current_eq >= app_state.target_profit_equity:
             app_state.execution_enabled = False
             app_state.target_stop_triggered = True
@@ -705,6 +727,13 @@ async def get_market_prices():
     }
 
 
+@app.get("/api/market/assets")
+async def get_alpaca_assets():
+    """Return active tradable asset list fetched directly from Alpaca Markets API."""
+    assets = app_state.alpaca_provider.get_active_assets()
+    return {"status": "success", "count": len(assets), "assets": assets}
+
+
 # ---------------------------------------------------------------------------
 # Paper Trading Endpoints
 # ---------------------------------------------------------------------------
@@ -712,6 +741,14 @@ async def get_market_prices():
 async def get_paper_account():
     """Return paper account balance, equity, positions, and active orders."""
     return app_state.paper_engine.get_summary()
+
+
+@app.get("/api/paper/history")
+@app.get("/api/paper/trades")
+async def get_paper_trade_history():
+    """Return historical paper trade execution log for audit and quantitative analysis."""
+    history = app_state.paper_engine.trade_history if app_state.paper_engine else []
+    return {"status": "success", "count": len(history), "trades": history}
 
 
 @app.post("/api/paper/order")
@@ -780,6 +817,7 @@ async def reset_paper_account():
     app_state.paper_engine.reset_account()
     app_state.execution_enabled = True
     app_state.target_stop_triggered = False
+    app_state.target_profit_equity = None
     app_state.save_target_stops()
     return {"status": "success", "account": app_state.paper_engine.get_summary()}
 
@@ -792,6 +830,7 @@ async def set_paper_balance(req: SetBalanceRequest):
 
     app_state.paper_engine.set_balance(req.balance)
     app_state.target_stop_triggered = False
+    app_state.target_profit_equity = None
     app_state.execution_enabled = True
     app_state.save_target_stops()
     return {"status": "success", "account": app_state.paper_engine.get_summary()}
@@ -874,18 +913,26 @@ async def get_target_stops():
 @app.post("/api/execution/target_stops")
 async def set_target_stops(req: TargetStopsRequest):
     """Set account target profit and drawdown equity limits."""
-    app_state.target_profit_equity = req.target_profit_equity
+    current_eq = app_state.paper_engine.get_summary().equity if app_state.paper_engine else 100000.0
+    
+    target_prof = req.target_profit_equity
+    # If resuming or updating and target profit is <= current equity, clear or bump target profit limit
+    if target_prof is not None and target_prof <= current_eq:
+        target_prof = None  # Clear reached limit
+
+    app_state.target_profit_equity = target_prof
     app_state.max_drawdown_equity = req.max_drawdown_equity
     if req.enabled:
         app_state.target_stop_triggered = False
         app_state.execution_enabled = True
     app_state.save_target_stops()
-    logger.info("execution.target_stops_updated", target_profit=req.target_profit_equity, drawdown=req.max_drawdown_equity)
+    logger.info("execution.target_stops_updated", target_profit=app_state.target_profit_equity, drawdown=req.max_drawdown_equity)
     return {
         "status": "success",
         "target_profit_equity": app_state.target_profit_equity,
         "max_drawdown_equity": app_state.max_drawdown_equity,
         "target_stop_triggered": app_state.target_stop_triggered,
+        "execution_enabled": app_state.execution_enabled,
     }
 
 
